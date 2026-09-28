@@ -96,23 +96,23 @@
 - Produz: `TestSupport.checar(boolean condicao, String mensagem)` e `esperarExcecao(Class<? extends Throwable> tipoEsperado, AcaoComExcecao acao)`.
 - `ServerMain.main` é apenas o ponto de entrada obrigatório da JVM; toda lógica auxiliar deve ficar em métodos com nomes próprios definidos nesta task.
 
-- [ ] **Passo 1: criar teste executável para argumentos**
+- [x] **Passo 1: criar teste executável para argumentos**
 
 Crie em `ServerConfig.java` a API publicada acima. Crie temporariamente `test/br/edu/redes/http/ServerConfigTest.java` com `main` cobrindo: argumentos válidos; porta 1024 rejeitada; porta não numérica rejeitada; `--root` ausente rejeitado; raiz inexistente rejeitada. Use um diretório temporário com `Files.createTempDirectory`.
 
-- [ ] **Passo 2: verificar falha inicial**
+- [x] **Passo 2: verificar falha inicial**
 
 Execute `bash scripts/compile.sh` depois de criar o script para compilar `src` em `out/main` e `test` em `out/test`. Resultado esperado: falha porque `ServerConfig.fromArgs` ainda não está implementado.
 
-- [ ] **Passo 3: implementar o mínimo**
+- [x] **Passo 3: implementar o mínimo**
 
 Use um laço sobre pares de argumentos. Valores padrão: `tempoLimiteOciosoMs = 5000`; `quantidadeTrabalhadores = max(4, Runtime.getRuntime().availableProcessors())`. Normalize a raiz com `toAbsolutePath().normalize()` e depois `toRealPath()`. Rejeite opção desconhecida. `ServerMain` apenas lê a configuração e imprime erro/uso em `stderr` com código de saída diferente de zero; o servidor real entra na Task 6.
 
-- [ ] **Passo 4: finalizar scripts e teste**
+- [x] **Passo 4: finalizar scripts e teste**
 
 `compile.sh` deve apagar somente `out/`, recriá-lo e executar `javac -encoding UTF-8 -d out/main` sobre fontes de `src`, depois `javac -encoding UTF-8 -cp out/main -d out/test` sobre fontes de `test`. `test.sh` chama `compile.sh` e executa cada classe `*Test` com `java -ea -cp out/main:out/test`. `run.sh` compila e executa `ServerMain`, repassando `"$@"`.
 
-- [ ] **Passo 5: verificar e versionar**
+- [x] **Passo 5: verificar e versionar**
 
 Execute `bash scripts/test.sh`; esperado: todos os casos de `ServerConfigTest` passam. Execute `bash scripts/run.sh --port 1024 --root ./www`; esperado: erro de porta, sem stack trace. Commit: `chore: create Java server skeleton`.
 
@@ -131,23 +131,23 @@ Execute `bash scripts/test.sh`; esperado: todos os casos de `ServerConfigTest` p
 - Produz: `HttpRequestReader(InputStream entrada, int maxBytesCabecalho)` e `HttpRequest ler()`; retorna `null` somente em EOF limpo antes de qualquer byte; lança `BadRequestException` para sintaxe inválida/limite excedido; propaga `SocketTimeoutException`.
 - O objeto mantém internamente os bytes excedentes para a próxima chamada de `ler()`.
 
-- [ ] **Passo 1: escrever casos que falham**
+- [x] **Passo 1: escrever casos que falham**
 
 No `main` do teste, cubra com `ByteArrayInputStream`: requisição completa; entrada fragmentada em um `InputStream` que entrega no máximo 2 bytes por leitura; duas requisições concatenadas lidas por duas chamadas; método/alvo/versão ausentes; request line com quatro campos; header sem `:`; CRLF ausente; cabeçalho maior que o limite; nomes de header consultados sem sensibilidade a maiúsculas.
 
-- [ ] **Passo 2: confirmar a falha**
+- [x] **Passo 2: confirmar a falha**
 
 Execute `bash scripts/test.sh`; esperado: compilação ou assertions falham pela ausência do parser.
 
-- [ ] **Passo 3: implementar acumulação de bytes**
+- [x] **Passo 3: implementar acumulação de bytes**
 
 Mantenha `byte[] buffer`, índices de início/fim e leia até localizar exatamente `\r\n\r\n`. Não converta bytes para texto antes de encontrar o terminador. Ao extrair um bloco, mova apenas o início lógico do buffer; não descarte o restante. Se EOF ocorrer depois de bytes parciais, lance `BadRequestException`.
 
-- [ ] **Passo 4: implementar parsing estrito**
+- [x] **Passo 4: implementar parsing estrito**
 
 Decodifique cabeçalhos como ISO-8859-1. Separe a request line em exatamente três tokens não vazios. Exija versão `HTTP/1.1`. Em cada linha de header, exija `:` após pelo menos um caractere, aplique `trim` ao valor e `toLowerCase(Locale.ROOT)` ao nome. Rejeite nomes duplicados para manter comportamento inequívoco. O percent-decoding não pertence ao parser; fica na Task 3.
 
-- [ ] **Passo 5: verificar e versionar**
+- [x] **Passo 5: verificar e versionar**
 
 Execute `bash scripts/test.sh`; esperado: todos os casos passam, inclusive duas requisições no mesmo fluxo. Commit: `feat: parse HTTP requests from TCP stream`.
 
@@ -165,23 +165,23 @@ Execute `bash scripts/test.sh`; esperado: todos os casos passam, inclusive duas 
 - Produz: `StaticFileService(Path raiz)` e `FileResult obter(String alvoRequisicao)`.
 - Status possíveis nesta camada: `200`, `400`, `403`, `404`.
 
-- [ ] **Passo 1: escrever testes de recurso e segurança**
+- [x] **Passo 1: escrever testes de recurso e segurança**
 
 Crie árvore temporária com `index.html`, `space name.txt`, `image.png`, `unknown.bin` e um arquivo irmão fora da raiz. Cubra `/index.html` = 200; `/space%20name.txt` = 200; arquivo ausente = 404; extensão desconhecida = `application/octet-stream`; query `/index.html?x=1` ignora query; `/../../outside.txt`, `/%2e%2e/%2e%2e/outside.txt` e `/safe/%2e%2e/%2e%2e/outside.txt` = 403; `%ZZ`, byte NUL codificado e target sem `/` = 400.
 
-- [ ] **Passo 2: confirmar a falha**
+- [x] **Passo 2: confirmar a falha**
 
 Execute `bash scripts/test.sh`; esperado: falha pela ausência de `StaticFileService`.
 
-- [ ] **Passo 3: implementar percent-decoding do caminho**
+- [x] **Passo 3: implementar percent-decoding do caminho**
 
 Remova query a partir do primeiro `?`. Decodifique `%HH` manualmente em bytes UTF-8; não use `URLDecoder`, pois ele converte `+` em espaço segundo formulário HTML. Rejeite `%` incompleto, hexadecimal inválido, NUL e UTF-8 inválido com `CharsetDecoder` configurado para `REPORT`.
 
-- [ ] **Passo 4: implementar contenção na raiz**
+- [x] **Passo 4: implementar contenção na raiz**
 
 Remova somente a `/` inicial, resolva contra a raiz e normalize. Antes de ler, exija `candidato.startsWith(raiz)`; caso contrário retorne 403. Para arquivo existente, use `toRealPath()` e repita `startsWith(raiz)` para bloquear symlinks que escapam da raiz. Diretórios devem resolver para `index.html`; se o índice não existir, retorne 404. Não liste diretórios.
 
-- [ ] **Passo 5: implementar MIME e verificar**
+- [x] **Passo 5: implementar MIME e verificar**
 
 Mapeie sem diferenciar maiúsculas: `.html -> text/html; charset=utf-8`, `.css -> text/css; charset=utf-8`, `.js -> text/javascript; charset=utf-8`, `.json -> application/json; charset=utf-8`, `.txt -> text/plain; charset=utf-8`, `.png -> image/png`, `.jpg` e `.jpeg -> image/jpeg`, `.pdf -> application/pdf`; fallback `application/octet-stream`. Execute testes. Commit: `feat: serve files within configured root`.
 
@@ -199,23 +199,23 @@ Mapeie sem diferenciar maiúsculas: `.html -> text/html; charset=utf-8`, `.css -
 - Produz: `HttpResponseWriter(String nomeServidor, Clock relogio)` e `void escrever(OutputStream saida, HttpResponse resposta, boolean apenasCabecalhos)`.
 - Razões exatas: `200 OK`, `400 Bad Request`, `403 Forbidden`, `404 Not Found`, `405 Method Not Allowed`.
 
-- [ ] **Passo 1: escrever testes byte a byte**
+- [x] **Passo 1: escrever testes byte a byte**
 
 Use `ByteArrayOutputStream` e `Clock.fixed(Instant.parse("2026-09-21T12:00:00Z"), ZoneOffset.UTC)`. Verifique linha `HTTP/1.1 200 OK\r\n`, `Date: Mon, 21 Sep 2026 12:00:00 GMT`, `Server: Grupo-Redes`, MIME, tamanho em bytes e exatamente um `\r\n\r\n`. Verifique que HEAD tem cabeçalhos idênticos ao GET correspondente e zero bytes depois do separador. Verifique 405 com `Allow: GET, HEAD`. Verifique `Connection: close` somente quando `fecharConexao` for verdadeiro.
 
-- [ ] **Passo 2: confirmar a falha**
+- [x] **Passo 2: confirmar a falha**
 
 Execute `bash scripts/test.sh`; esperado: falha pela ausência do writer.
 
-- [ ] **Passo 3: implementar serialização**
+- [x] **Passo 3: implementar serialização**
 
 Formate a data com `DateTimeFormatter.RFC_1123_DATE_TIME`, locale inglês e UTC. Escreva cabeçalhos em ASCII, sempre calculando `Content-Length` de `corpo.length`. Ordem fixa: status, `Date`, `Server`, `Content-Length`, `Content-Type`, headers extras, `Connection` se necessário, linha vazia. Para `apenasCabecalhos`, não escreva o corpo.
 
-- [ ] **Passo 4: implementar corpos de erro consistentes**
+- [x] **Passo 4: implementar corpos de erro consistentes**
 
 Adicione `static HttpResponse erro(int status, boolean fecharConexao, Map<String,String> cabecalhosExtras)` em `HttpResponse`: corpo UTF-8 simples contendo código e razão, MIME `text/plain; charset=utf-8`. Isso garante `Content-Length` correto também nos erros e permite suprimir somente o corpo em HEAD.
 
-- [ ] **Passo 5: verificar e versionar**
+- [x] **Passo 5: verificar e versionar**
 
 Execute `bash scripts/test.sh`; esperado: testes passam. Commit: `feat: serialize compliant HTTP responses`.
 
@@ -232,23 +232,23 @@ Execute `bash scripts/test.sh`; esperado: testes passam. Commit: `feat: serializ
 - Produz: `HttpConnectionHandler(Socket socket, StaticFileService arquivos, HttpResponseWriter escritor, int tempoLimiteOciosoMs)` implementando `Runnable`.
 - Regra: HEAD usa a mesma resolução/resposta de GET e passa `apenasCabecalhos=true`; método diferente gera 405 com `Allow`.
 
-- [ ] **Passo 1: criar servidor de teste de uma conexão**
+- [x] **Passo 1: criar servidor de teste de uma conexão**
 
 No teste, abra `ServerSocket(0, 1, InetAddress.getLoopbackAddress())`, aceite uma conexão em thread auxiliar e execute o handler. O cliente usa `Socket`, escreve bytes crus e lê resposta usando um helper que respeita `Content-Length`. A porta efêmera é somente para teste; produção continua exigindo porta alta explícita.
 
-- [ ] **Passo 2: cobrir comportamento funcional**
+- [x] **Passo 2: cobrir comportamento funcional**
 
 Adicione casos para GET 200 com corpo; HEAD 200 sem corpo e mesmo conjunto/valores de cabeçalhos do GET; POST 405 com `Allow`; request line inválida 400; header inválido 400; arquivo ausente 404; travessia 403. Compare conteúdo binário sem converter para texto.
 
-- [ ] **Passo 3: confirmar falhas**
+- [x] **Passo 3: confirmar falhas**
 
 Execute `bash scripts/test.sh`; esperado: casos de integração falham pela ausência do handler.
 
-- [ ] **Passo 4: implementar roteamento mínimo**
+- [x] **Passo 4: implementar roteamento mínimo**
 
 No `run`, configure `socket.setSoTimeout(tempoLimiteOciosoMs)`. Leia uma requisição, determine `fecharConexao` por comparação case-insensitive do header `Connection` com `close`, resolva GET/HEAD, produza 405 nos demais e escreva a resposta. Converta apenas `BadRequestException` em 400; falha inesperada de I/O encerra a conexão sem tentar escrever uma segunda resposta corrompida.
 
-- [ ] **Passo 5: verificar e versionar**
+- [x] **Passo 5: verificar e versionar**
 
 Execute `bash scripts/test.sh`; esperado: todos os casos passam. Commit: `feat: handle HTTP methods and status codes`.
 
@@ -266,27 +266,27 @@ Execute `bash scripts/test.sh`; esperado: todos os casos passam. Commit: `feat: 
 - Produz: um `HttpRequestReader` por socket, reutilizado durante toda a conexão.
 - Encerramento: EOF, `Connection: close`, timeout ocioso, erro de parsing ou desligamento do processo.
 
-- [ ] **Passo 1: adicionar testes de persistência**
+- [x] **Passo 1: adicionar testes de persistência**
 
 No mesmo socket cliente, envie GET 1, leia a resposta, envie GET 2 e leia a segunda. Adicione outro caso enviando duas requisições concatenadas em uma única escrita e confirme duas respostas na ordem. Em um terceiro caso, envie `Connection: close`, confirme esse header na resposta e EOF posterior. Em um quarto, use timeout de 150 ms e confirme EOF após ocioso.
 
-- [ ] **Passo 2: adicionar teste de não bloqueio**
+- [x] **Passo 2: adicionar teste de não bloqueio**
 
 Abra uma conexão A e envie somente metade dos cabeçalhos. Sem fechá-la, abra conexão B, envie GET completo e exija resposta 200 em até 1 s. Este teste deve executar o accept loop real com pelo menos dois workers.
 
-- [ ] **Passo 3: confirmar falhas**
+- [x] **Passo 3: confirmar falhas**
 
 Execute `bash scripts/test.sh`; esperado: persistência e/ou concorrência falham antes da implementação.
 
-- [ ] **Passo 4: implementar laço persistente**
+- [x] **Passo 4: implementar laço persistente**
 
 No handler, envolva leitura/processamento/escrita em laço. Reutilize o mesmo reader. Após escrever cada resposta, chame `flush`. Termine se `fecharConexao`; em `SocketTimeoutException`, apenas encerre; em EOF limpo, encerre. Uma requisição inválida recebe 400 com fechamento para evitar dessincronização do fluxo.
 
-- [ ] **Passo 5: implementar servidor concorrente**
+- [x] **Passo 5: implementar servidor concorrente**
 
 Em `iniciarServidor`, crie `ServerSocket`, habilite `setReuseAddress(true)`, faça bind explícito em `new InetSocketAddress("0.0.0.0", config.porta())`, e use `Executors.newFixedThreadPool(config.quantidadeTrabalhadores())`. O accept loop submete um novo handler por conexão. Instale shutdown hook que fecha o `ServerSocket` e chama `shutdownNow` no pool. Não compartilhe buffers ou sockets entre handlers.
 
-- [ ] **Passo 6: verificar e versionar**
+- [x] **Passo 6: verificar e versionar**
 
 Execute `bash scripts/test.sh` três vezes; esperado: nenhuma falha intermitente. Execute localmente `bash scripts/run.sh --port 8080 --root ./www` depois da Task 7 criar `www`, ou use raiz temporária existente. Confirme com `curl -v`. Commit: `feat: add persistent concurrent connections`.
 
@@ -305,19 +305,19 @@ Execute `bash scripts/test.sh` três vezes; esperado: nenhuma falha intermitente
 - Consome: comandos `scripts/compile.sh`, `scripts/test.sh`, `scripts/run.sh`.
 - Produz: página HTML que referencia `/style.css` e `/pixel.png`, obrigando o navegador a emitir múltiplas requisições.
 
-- [ ] **Passo 1: criar conteúdo estático mínimo**
+- [x] **Passo 1: criar conteúdo estático mínimo**
 
 `index.html` deve ter HTML5 válido, título do trabalho, uma frase identificando o servidor e `<link rel="stylesheet" href="/style.css">` mais `<img src="/pixel.png" alt="Imagem de teste">`. `style.css` deve tornar visualmente evidente que carregou. `pixel.png` deve ser PNG válido pequeno, não texto renomeado.
 
-- [ ] **Passo 2: escrever README reproduzível**
+- [x] **Passo 2: escrever README reproduzível**
 
 Documente pré-requisito JDK, compilação, testes e execução exata `bash scripts/run.sh --port 8080 --root ./www`; descoberta do IP; acesso remoto `http://IP_DO_SERVIDOR:8080/`; firewall/porta; argumentos e defaults; estratégia de threads; timeout; comandos curl para 200/400/403/404/405/HEAD/Connection close; aviso de que testes finais usam máquinas distintas.
 
-- [ ] **Passo 3: impedir artefatos na entrega**
+- [x] **Passo 3: impedir artefatos na entrega**
 
 Em `.gitignore`, inclua `out/`, `*.class`, `.DS_Store`, arquivos temporários do editor e capturas que não sejam as finais nomeadas. Não ignore `capturas/*.pcapng` porque elas fazem parte da entrega.
 
-- [ ] **Passo 4: verificar e versionar**
+- [x] **Passo 4: verificar e versionar**
 
 Execute testes, inicie o servidor e abra `/` e os dois recursos com curl. Resultado esperado: todos 200, MIME correto e HTML referencia ambos. Commit: `docs: add interoperability site and usage guide`.
 
@@ -335,19 +335,19 @@ Execute testes, inicie o servidor e abra `/` e os dois recursos com curl. Result
 - C1: exatamente 10 invocações sequenciais de `curl` com `Connection: close`.
 - C2: uma única invocação de `curl` com a mesma URL repetida 10 vezes, permitindo reuso da conexão.
 
-- [ ] **Passo 1: criar C1**
+- [x] **Passo 1: criar C1**
 
 Script com `set -eu`, valida um argumento, registra início/fim com nanosegundos quando disponível e executa laço de 1 a 10 usando `curl --silent --show-error --output /dev/null --header 'Connection: close' "$url"`. Se qualquer requisição falhar, script encerra com erro.
 
-- [ ] **Passo 2: criar C2**
+- [x] **Passo 2: criar C2**
 
 Script com `set -eu`, valida um argumento e chama um único processo `curl --silent --show-error --output /dev/null` passando a mesma URL 10 vezes. Não usar `Connection: close`. A saída de cada transferência deve ir para `/dev/null`. Um único processo é essencial para o pool de conexões do curl reutilizar o socket.
 
-- [ ] **Passo 3: documentar captura e leitura das métricas**
+- [x] **Passo 3: documentar captura e leitura das métricas**
 
 Em `capturas/README.md`, descreva: iniciar Wireshark na interface física; filtro `tcp.port == 8080`; limpar captura; rodar um cenário; parar; salvar `c1.pcapng`/`c2.pcapng`. Para cada arquivo, usar `Statistics > Conversations > TCP` para pacotes, bytes e duração; usar filtro `tcp.flags.syn == 1 && tcp.flags.ack == 0` para contar aberturas; confirmar cada handshake com SYN, SYN-ACK e ACK. Registrar que retransmissões devem ser mencionadas, não apagadas.
 
-- [ ] **Passo 4: validar sem capturar**
+- [x] **Passo 4: validar sem capturar**
 
 Com servidor local, execute ambos os scripts e confira no log exatamente 10 requisições por cenário; em C1 devem aparecer 10 conexões fechadas, em C2 uma conexão com 10 requisições. Commit: `test: add persistent connection measurement clients`.
 

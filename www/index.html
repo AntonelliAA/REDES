@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Servidor HTTP/1.1 — Redes de Computadores</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="badge">HTTP/1.1 Socket TCP</div>
+            <h1>Trabalho 1 — Laboratório de Redes</h1>
+            <p class="subtitle">Servidor HTTP concorrente sobre sockets TCP em Java com conexões persistentes</p>
+        </header>
+
+        <main>
+            <div class="card status-card">
+                <div class="status-indicator"></div>
+                <div>
+                    <h2>Página de teste carregada</h2>
+                    <p>Confira o carregamento dos recursos e a reutilização das conexões no navegador ou no Wireshark.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Teste de Interoperabilidade</h2>
+                <p>Abra esta página em outra máquina da rede para testar o carregamento do HTML, da folha de estilos CSS e da imagem referenciada.</p>
+                
+                <div class="image-box">
+                    <img src="/pixel.png" alt="Pixel de Teste" id="imagem-teste">
+                    <span>Imagem de teste (/pixel.png)</span>
+                </div>
+            </div>
+
+            <div class="card info-grid">
+                <div class="info-item">
+                    <strong>Protocolo:</strong>
+                    <span>HTTP/1.1</span>
+                </div>
+                <div class="info-item">
+                    <strong>Persistência:</strong>
+                    <span>Timeout padrão de 5 s</span>
+                </div>
+                <div class="info-item">
+                    <strong>Concorrência:</strong>
+                    <span>Pool de Threads</span>
+                </div>
+                <div class="info-item">
+                    <strong>Segurança:</strong>
+                    <span>Prevenção de Path Traversal</span>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Laboratório de Redes de Computadores &bull; Servidor HTTP/1.1 em Java</p>
+        </footer>
+    </div>
+</body>
+</html>

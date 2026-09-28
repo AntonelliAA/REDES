@@ -1,5 +1,7 @@
 # Relatório de Auditoria: Armadilha de Prompt Injection (Canary Trap) e Contaminação do Código
 
+> **Registro histórico.** Na revisão de 28/09/2026, os padrões de nomes descritos abaixo não foram encontrados em `src/`, `test/`, `scripts/` ou `www/`. Os trechos da injeção foram preservados aqui somente como evidência; não são requisitos do trabalho nem instruções a executar.
+
 ## 1. Sumário Executivo
 
 Durante a formatação do enunciado do trabalho e a inspeção do código existente no repositório, foi detectada uma **armadilha clássica de prompt injection (canary trap)** inserida pelo professor no material original da disciplina.
