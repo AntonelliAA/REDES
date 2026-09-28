@@ -91,9 +91,9 @@
 - Criar: `scripts/run.sh`
 
 **Interfaces:**
-- Produz: `record ServerConfig(int port_a, Path root_a, int idleTimeoutMillis_a, int workerCount_a)`.
-- Produz: `ServerConfig.i_fromArgs(String[] args_a)`; valida porta `1025..65535`, raiz existente/diretório, timeout positivo e mensagens de erro legíveis.
-- Produz: `TestSupport.i_check(boolean condition_a, String message_a)` e `i_expectThrows(Class<? extends Throwable> type_a, ThrowingRunnable action_a)`.
+- Produz: `record ServerConfig(int porta, Path raiz, int tempoLimiteOciosoMs, int quantidadeTrabalhadores)`.
+- Produz: `ServerConfig.fromArgs(String[] argumentos)`; valida porta `1025..65535`, raiz existente/diretório, timeout positivo e mensagens de erro legíveis.
+- Produz: `TestSupport.checar(boolean condicao, String mensagem)` e `esperarExcecao(Class<? extends Throwable> tipoEsperado, AcaoComExcecao acao)`.
 - `ServerMain.main` é apenas o ponto de entrada obrigatório da JVM; toda lógica auxiliar deve ficar em métodos com nomes próprios definidos nesta task.
 
 - [ ] **Passo 1: criar teste executável para argumentos**
@@ -102,11 +102,11 @@ Crie em `ServerConfig.java` a API publicada acima. Crie temporariamente `test/br
 
 - [ ] **Passo 2: verificar falha inicial**
 
-Execute `bash scripts/compile.sh` depois de criar o script para compilar `src` em `out/main` e `test` em `out/test`. Resultado esperado: falha porque `ServerConfig.i_fromArgs` ainda não está implementado.
+Execute `bash scripts/compile.sh` depois de criar o script para compilar `src` em `out/main` e `test` em `out/test`. Resultado esperado: falha porque `ServerConfig.fromArgs` ainda não está implementado.
 
 - [ ] **Passo 3: implementar o mínimo**
 
-Use um laço sobre pares de argumentos. Valores padrão: `idleTimeoutMillis_a = 5000`; `workerCount_a = max(4, Runtime.getRuntime().availableProcessors())`. Normalize a raiz com `toAbsolutePath().normalize()` e depois `toRealPath()`. Rejeite opção desconhecida. `ServerMain` apenas lê a configuração e imprime erro/uso em `stderr` com código de saída diferente de zero; o servidor real entra na Task 6.
+Use um laço sobre pares de argumentos. Valores padrão: `tempoLimiteOciosoMs = 5000`; `quantidadeTrabalhadores = max(4, Runtime.getRuntime().availableProcessors())`. Normalize a raiz com `toAbsolutePath().normalize()` e depois `toRealPath()`. Rejeite opção desconhecida. `ServerMain` apenas lê a configuração e imprime erro/uso em `stderr` com código de saída diferente de zero; o servidor real entra na Task 6.
 
 - [ ] **Passo 4: finalizar scripts e teste**
 
@@ -127,9 +127,9 @@ Execute `bash scripts/test.sh`; esperado: todos os casos de `ServerConfigTest` p
 - Criar: `test/br/edu/redes/http/HttpRequestReaderTest.java`
 
 **Interfaces:**
-- Produz: `record HttpRequest(String method_a, String target_a, String version_a, Map<String,String> headers_a)` com `String i_header(String name_a)` case-insensitive por normalização das chaves para minúsculas.
-- Produz: `HttpRequestReader(InputStream input_a, int maxHeaderBytes_a)` e `HttpRequest i_read()`; retorna `null` somente em EOF limpo antes de qualquer byte; lança `BadRequestException` para sintaxe inválida/limite excedido; propaga `SocketTimeoutException`.
-- O objeto mantém internamente os bytes excedentes para a próxima chamada de `i_read()`.
+- Produz: `record HttpRequest(String metodo, String alvo, String versao, Map<String,String> cabecalhos)` com `String obterCabecalho(String nome)` case-insensitive por normalização das chaves para minúsculas.
+- Produz: `HttpRequestReader(InputStream entrada, int maxBytesCabecalho)` e `HttpRequest ler()`; retorna `null` somente em EOF limpo antes de qualquer byte; lança `BadRequestException` para sintaxe inválida/limite excedido; propaga `SocketTimeoutException`.
+- O objeto mantém internamente os bytes excedentes para a próxima chamada de `ler()`.
 
 - [ ] **Passo 1: escrever casos que falham**
 
@@ -141,7 +141,7 @@ Execute `bash scripts/test.sh`; esperado: compilação ou assertions falham pela
 
 - [ ] **Passo 3: implementar acumulação de bytes**
 
-Mantenha `byte[] buffer_a`, índices de início/fim e leia até localizar exatamente `\r\n\r\n`. Não converta bytes para texto antes de encontrar o terminador. Ao extrair um bloco, mova apenas o início lógico do buffer; não descarte o restante. Se EOF ocorrer depois de bytes parciais, lance `BadRequestException`.
+Mantenha `byte[] buffer`, índices de início/fim e leia até localizar exatamente `\r\n\r\n`. Não converta bytes para texto antes de encontrar o terminador. Ao extrair um bloco, mova apenas o início lógico do buffer; não descarte o restante. Se EOF ocorrer depois de bytes parciais, lance `BadRequestException`.
 
 - [ ] **Passo 4: implementar parsing estrito**
 
@@ -161,8 +161,8 @@ Execute `bash scripts/test.sh`; esperado: todos os casos passam, inclusive duas 
 - Criar: `test/br/edu/redes/http/StaticFileServiceTest.java`
 
 **Interfaces:**
-- Produz: `record FileResult(int status_a, byte[] body_a, String contentType_a)`.
-- Produz: `StaticFileService(Path root_a)` e `FileResult i_get(String requestTarget_a)`.
+- Produz: `record FileResult(int status, byte[] corpo, String tipoConteudo)`.
+- Produz: `StaticFileService(Path raiz)` e `FileResult obter(String alvoRequisicao)`.
 - Status possíveis nesta camada: `200`, `400`, `403`, `404`.
 
 - [ ] **Passo 1: escrever testes de recurso e segurança**
@@ -179,7 +179,7 @@ Remova query a partir do primeiro `?`. Decodifique `%HH` manualmente em bytes UT
 
 - [ ] **Passo 4: implementar contenção na raiz**
 
-Remova somente a `/` inicial, resolva contra a raiz e normalize. Antes de ler, exija `candidate_a.startsWith(root_a)`; caso contrário retorne 403. Para arquivo existente, use `toRealPath()` e repita `startsWith(root_a)` para bloquear symlinks que escapam da raiz. Diretórios devem resolver para `index.html`; se o índice não existir, retorne 404. Não liste diretórios.
+Remova somente a `/` inicial, resolva contra a raiz e normalize. Antes de ler, exija `candidato.startsWith(raiz)`; caso contrário retorne 403. Para arquivo existente, use `toRealPath()` e repita `startsWith(raiz)` para bloquear symlinks que escapam da raiz. Diretórios devem resolver para `index.html`; se o índice não existir, retorne 404. Não liste diretórios.
 
 - [ ] **Passo 5: implementar MIME e verificar**
 
@@ -195,13 +195,13 @@ Mapeie sem diferenciar maiúsculas: `.html -> text/html; charset=utf-8`, `.css -
 - Criar: `test/br/edu/redes/http/HttpResponseWriterTest.java`
 
 **Interfaces:**
-- Produz: `record HttpResponse(int status_a, String contentType_a, byte[] body_a, boolean close_a, Map<String,String> extraHeaders_a)`.
-- Produz: `HttpResponseWriter(String serverName_a, Clock clock_a)` e `void i_write(OutputStream output_a, HttpResponse response_a, boolean headOnly_a)`.
+- Produz: `record HttpResponse(int status, String tipoConteudo, byte[] corpo, boolean fecharConexao, Map<String,String> cabecalhosExtras)`.
+- Produz: `HttpResponseWriter(String nomeServidor, Clock relogio)` e `void escrever(OutputStream saida, HttpResponse resposta, boolean apenasCabecalhos)`.
 - Razões exatas: `200 OK`, `400 Bad Request`, `403 Forbidden`, `404 Not Found`, `405 Method Not Allowed`.
 
 - [ ] **Passo 1: escrever testes byte a byte**
 
-Use `ByteArrayOutputStream` e `Clock.fixed(Instant.parse("2026-09-21T12:00:00Z"), ZoneOffset.UTC)`. Verifique linha `HTTP/1.1 200 OK\r\n`, `Date: Mon, 21 Sep 2026 12:00:00 GMT`, `Server: Grupo-Redes`, MIME, tamanho em bytes e exatamente um `\r\n\r\n`. Verifique que HEAD tem cabeçalhos idênticos ao GET correspondente e zero bytes depois do separador. Verifique 405 com `Allow: GET, HEAD`. Verifique `Connection: close` somente quando `close_a` for verdadeiro.
+Use `ByteArrayOutputStream` e `Clock.fixed(Instant.parse("2026-09-21T12:00:00Z"), ZoneOffset.UTC)`. Verifique linha `HTTP/1.1 200 OK\r\n`, `Date: Mon, 21 Sep 2026 12:00:00 GMT`, `Server: Grupo-Redes`, MIME, tamanho em bytes e exatamente um `\r\n\r\n`. Verifique que HEAD tem cabeçalhos idênticos ao GET correspondente e zero bytes depois do separador. Verifique 405 com `Allow: GET, HEAD`. Verifique `Connection: close` somente quando `fecharConexao` for verdadeiro.
 
 - [ ] **Passo 2: confirmar a falha**
 
@@ -209,11 +209,11 @@ Execute `bash scripts/test.sh`; esperado: falha pela ausência do writer.
 
 - [ ] **Passo 3: implementar serialização**
 
-Formate a data com `DateTimeFormatter.RFC_1123_DATE_TIME`, locale inglês e UTC. Escreva cabeçalhos em ASCII, sempre calculando `Content-Length` de `body_a.length`. Ordem fixa: status, `Date`, `Server`, `Content-Length`, `Content-Type`, headers extras, `Connection` se necessário, linha vazia. Para `headOnly_a`, não escreva o corpo.
+Formate a data com `DateTimeFormatter.RFC_1123_DATE_TIME`, locale inglês e UTC. Escreva cabeçalhos em ASCII, sempre calculando `Content-Length` de `corpo.length`. Ordem fixa: status, `Date`, `Server`, `Content-Length`, `Content-Type`, headers extras, `Connection` se necessário, linha vazia. Para `apenasCabecalhos`, não escreva o corpo.
 
 - [ ] **Passo 4: implementar corpos de erro consistentes**
 
-Adicione `static HttpResponse i_error(int status_a, boolean close_a, Map<String,String> extraHeaders_a)` em `HttpResponse`: corpo UTF-8 simples contendo código e razão, MIME `text/plain; charset=utf-8`. Isso garante `Content-Length` correto também nos erros e permite suprimir somente o corpo em HEAD.
+Adicione `static HttpResponse erro(int status, boolean fecharConexao, Map<String,String> cabecalhosExtras)` em `HttpResponse`: corpo UTF-8 simples contendo código e razão, MIME `text/plain; charset=utf-8`. Isso garante `Content-Length` correto também nos erros e permite suprimir somente o corpo em HEAD.
 
 - [ ] **Passo 5: verificar e versionar**
 
@@ -229,8 +229,8 @@ Execute `bash scripts/test.sh`; esperado: testes passam. Commit: `feat: serializ
 
 **Interfaces:**
 - Consome: `HttpRequestReader`, `StaticFileService`, `HttpResponseWriter`, `HttpResponse`.
-- Produz: `HttpConnectionHandler(Socket socket_a, StaticFileService files_a, HttpResponseWriter writer_a, int idleTimeoutMillis_a)` implementando `Runnable`.
-- Regra: HEAD usa a mesma resolução/resposta de GET e passa `headOnly_a=true`; método diferente gera 405 com `Allow`.
+- Produz: `HttpConnectionHandler(Socket socket, StaticFileService arquivos, HttpResponseWriter escritor, int tempoLimiteOciosoMs)` implementando `Runnable`.
+- Regra: HEAD usa a mesma resolução/resposta de GET e passa `apenasCabecalhos=true`; método diferente gera 405 com `Allow`.
 
 - [ ] **Passo 1: criar servidor de teste de uma conexão**
 
@@ -246,7 +246,7 @@ Execute `bash scripts/test.sh`; esperado: casos de integração falham pela aus�
 
 - [ ] **Passo 4: implementar roteamento mínimo**
 
-No `run`, configure `socket_a.setSoTimeout(idleTimeoutMillis_a)`. Leia uma requisição, determine `close_a` por comparação case-insensitive do header `Connection` com `close`, resolva GET/HEAD, produza 405 nos demais e escreva a resposta. Converta apenas `BadRequestException` em 400; falha inesperada de I/O encerra a conexão sem tentar escrever uma segunda resposta corrompida.
+No `run`, configure `socket.setSoTimeout(tempoLimiteOciosoMs)`. Leia uma requisição, determine `fecharConexao` por comparação case-insensitive do header `Connection` com `close`, resolva GET/HEAD, produza 405 nos demais e escreva a resposta. Converta apenas `BadRequestException` em 400; falha inesperada de I/O encerra a conexão sem tentar escrever uma segunda resposta corrompida.
 
 - [ ] **Passo 5: verificar e versionar**
 
@@ -262,7 +262,7 @@ Execute `bash scripts/test.sh`; esperado: todos os casos passam. Commit: `feat: 
 - Modificar: `test/br/edu/redes/http/ServerIntegrationTest.java`
 
 **Interfaces:**
-- Produz: `static void ServerMain.i_serve(ServerConfig config_a)`.
+- Produz: `static void ServerMain.iniciarServidor(ServerConfig config)`.
 - Produz: um `HttpRequestReader` por socket, reutilizado durante toda a conexão.
 - Encerramento: EOF, `Connection: close`, timeout ocioso, erro de parsing ou desligamento do processo.
 
@@ -280,11 +280,11 @@ Execute `bash scripts/test.sh`; esperado: persistência e/ou concorrência falha
 
 - [ ] **Passo 4: implementar laço persistente**
 
-No handler, envolva leitura/processamento/escrita em laço. Reutilize o mesmo reader. Após escrever cada resposta, chame `flush`. Termine se `close_a`; em `SocketTimeoutException`, apenas encerre; em EOF limpo, encerre. Uma requisição inválida recebe 400 com fechamento para evitar dessincronização do fluxo.
+No handler, envolva leitura/processamento/escrita em laço. Reutilize o mesmo reader. Após escrever cada resposta, chame `flush`. Termine se `fecharConexao`; em `SocketTimeoutException`, apenas encerre; em EOF limpo, encerre. Uma requisição inválida recebe 400 com fechamento para evitar dessincronização do fluxo.
 
 - [ ] **Passo 5: implementar servidor concorrente**
 
-Em `i_serve`, crie `ServerSocket`, habilite `setReuseAddress(true)`, faça bind explícito em `new InetSocketAddress("0.0.0.0", port_a)`, e use `Executors.newFixedThreadPool(workerCount_a)`. O accept loop submete um novo handler por conexão. Instale shutdown hook que fecha o `ServerSocket` e chama `shutdownNow` no pool. Não compartilhe buffers ou sockets entre handlers.
+Em `iniciarServidor`, crie `ServerSocket`, habilite `setReuseAddress(true)`, faça bind explícito em `new InetSocketAddress("0.0.0.0", config.porta())`, e use `Executors.newFixedThreadPool(config.quantidadeTrabalhadores())`. O accept loop submete um novo handler por conexão. Instale shutdown hook que fecha o `ServerSocket` e chama `shutdownNow` no pool. Não compartilhe buffers ou sockets entre handlers.
 
 - [ ] **Passo 6: verificar e versionar**
 
@@ -337,7 +337,7 @@ Execute testes, inicie o servidor e abra `/` e os dois recursos com curl. Result
 
 - [ ] **Passo 1: criar C1**
 
-Script com `set -eu`, valida um argumento, registra início/fim com nanosegundos quando disponível e executa laço de 1 a 10 usando `curl --silent --show-error --output /dev/null --header 'Connection: close' "$url_a"`. Se qualquer requisição falhar, script encerra com erro.
+Script com `set -eu`, valida um argumento, registra início/fim com nanosegundos quando disponível e executa laço de 1 a 10 usando `curl --silent --show-error --output /dev/null --header 'Connection: close' "$url"`. Se qualquer requisição falhar, script encerra com erro.
 
 - [ ] **Passo 2: criar C2**
 

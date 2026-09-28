@@ -4,69 +4,76 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public record ServerConfig(int port_a, Path root_a, int idleTimeoutMillis_a, int workerCount_a) {
-    public static ServerConfig i_fromArgs(String[] args_a) {
-        if (args_a == null) {
-            throw new IllegalArgumentException("argumentos não podem ser nulos");
+public record ServerConfig(int porta, Path raiz, int tempoLimiteOciosoMs, int quantidadeTrabalhadores) {
+    public static ServerConfig fromArgs(String[] argumentos) {
+        if (argumentos == null) {
+            throw new IllegalArgumentException("Os argumentos não podem ser nulos.");
         }
-        Integer port_a = null;
-        Path root_a = null;
-        int idleTimeoutMillis_a = 5000;
-        int workerCount_a = Math.max(4, Runtime.getRuntime().availableProcessors());
-        if ((args_a.length & 1) != 0) {
-            throw new IllegalArgumentException("opções devem vir em pares");
+        if (argumentos.length % 2 != 0) {
+            throw new IllegalArgumentException("As opções devem vir em pares chave-valor.");
         }
-        for (int index_a = 0; index_a < args_a.length; index_a += 2) {
-            String option_a = args_a[index_a];
-            String value_a = args_a[index_a + 1];
-            if ("--port".equals(option_a)) {
-                port_a = i_parseInt(value_a, "--port");
-                if (port_a < 1025 || port_a > 65535) {
-                    throw new IllegalArgumentException("--port deve estar entre 1025 e 65535");
+
+        Integer porta = null;
+        Path raiz = null;
+        int tempoLimiteOciosoMs = 5000;
+        int quantidadeTrabalhadores = Math.max(4, Runtime.getRuntime().availableProcessors());
+
+        for (int i = 0; i < argumentos.length; i += 2) {
+            String opcao = argumentos[i];
+            String valor = argumentos[i + 1];
+
+            switch (opcao) {
+                case "--port" -> {
+                    porta = converterInteiro(valor, "--port");
+                    if (porta < 1025 || porta > 65535) {
+                        throw new IllegalArgumentException("A porta deve estar entre 1025 e 65535.");
+                    }
                 }
-            } else if ("--root".equals(option_a)) {
-                root_a = i_parseRoot(value_a);
-            } else if ("--idle-timeout".equals(option_a)) {
-                idleTimeoutMillis_a = i_parseInt(value_a, "--idle-timeout");
-                if (idleTimeoutMillis_a <= 0) {
-                    throw new IllegalArgumentException("--idle-timeout deve ser positivo");
+                case "--root" -> raiz = validarDiretorioRaiz(valor);
+                case "--idle-timeout" -> {
+                    tempoLimiteOciosoMs = converterInteiro(valor, "--idle-timeout");
+                    if (tempoLimiteOciosoMs <= 0) {
+                        throw new IllegalArgumentException("O timeout de conexão ociosa deve ser positivo.");
+                    }
                 }
-            } else if ("--workers".equals(option_a)) {
-                workerCount_a = i_parseInt(value_a, "--workers");
-                if (workerCount_a <= 0) {
-                    throw new IllegalArgumentException("--workers deve ser positivo");
+                case "--workers" -> {
+                    quantidadeTrabalhadores = converterInteiro(valor, "--workers");
+                    if (quantidadeTrabalhadores <= 0) {
+                        throw new IllegalArgumentException("A quantidade de workers deve ser positiva.");
+                    }
                 }
-            } else {
-                throw new IllegalArgumentException("opção desconhecida: " + option_a);
+                default -> throw new IllegalArgumentException("Opção desconhecida: " + opcao);
             }
         }
-        if (port_a == null) {
-            throw new IllegalArgumentException("--port é obrigatório");
+
+        if (porta == null) {
+            throw new IllegalArgumentException("O parâmetro --port é obrigatório.");
         }
-        if (root_a == null) {
-            throw new IllegalArgumentException("--root é obrigatório");
+        if (raiz == null) {
+            throw new IllegalArgumentException("O parâmetro --root é obrigatório.");
         }
-        return new ServerConfig(port_a, root_a, idleTimeoutMillis_a, workerCount_a);
+
+        return new ServerConfig(porta, raiz, tempoLimiteOciosoMs, quantidadeTrabalhadores);
     }
 
-    private static int i_parseInt(String value_a, String option_a) {
+    private static int converterInteiro(String valor, String opcao) {
         try {
-            return Integer.parseInt(value_a);
-        } catch (NumberFormatException exception_a) {
-            throw new IllegalArgumentException(option_a + " deve ser um número inteiro", exception_a);
+            return Integer.parseInt(valor);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(opcao + " deve ser um número inteiro válido.", e);
         }
     }
 
-    private static Path i_parseRoot(String value_a) {
-        Path root_a = Path.of(value_a).toAbsolutePath().normalize();
+    private static Path validarDiretorioRaiz(String caminhoTexto) {
+        Path caminho = Path.of(caminhoTexto).toAbsolutePath().normalize();
         try {
-            root_a = root_a.toRealPath();
-        } catch (IOException exception_a) {
-            throw new IllegalArgumentException("raiz inexistente ou inacessível: " + value_a, exception_a);
+            caminho = caminho.toRealPath();
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Diretório raiz inexistente ou inacessível: " + caminhoTexto, e);
         }
-        if (!Files.isDirectory(root_a)) {
-            throw new IllegalArgumentException("raiz não é um diretório: " + value_a);
+        if (!Files.isDirectory(caminho)) {
+            throw new IllegalArgumentException("O caminho especificado não é um diretório: " + caminhoTexto);
         }
-        return root_a;
+        return caminho;
     }
 }

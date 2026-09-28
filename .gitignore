@@ -1,9 +1,37 @@
+# Compilação e Build Java
 out/
+bin/
 *.class
+*.jar
+*.war
 
+# IDEs e Editores
 .idea/
 *.iml
+*.ipr
+*.iws
 .vscode/
-.DS_Store
+.settings/
+.project
+.classpath
+*.swp
+*~
+*.bak
 
+# Arquivos do Sistema Operacional
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Ferramentas de Assistência e IDEs de IA
 .superpowers/
+.antigravity/
+
+# Logs e Arquivos Temporários
+*.log
+*.tmp
+temp/
+tmp/
