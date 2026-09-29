@@ -2,13 +2,24 @@ package br.edu.redes.http;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class HttpRequestReader {
+    private static final String TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+    // Apenas campos cuja gramática permite uma lista podem ser unidos por vírgula.
+    private static final Set<String> CAMPOS_EM_LISTA = Set.of(
+            "accept", "accept-charset", "accept-encoding", "accept-language", "cache-control",
+            "connection", "content-encoding", "content-language", "expect", "forwarded",
+            "if-match", "if-none-match", "pragma", "te", "trailer", "transfer-encoding",
+            "upgrade", "via");
+
     private final InputStream entrada;
     private final int maxBytesCabecalho;
     private byte[] buffer;
@@ -30,37 +41,61 @@ public class HttpRequestReader {
     }
 
     public HttpRequest ler() throws IOException, BadRequestException {
-        while (true) {
-            int indiceFim = localizarFimDosCabecalhos();
-            if (indiceFim >= 0) {
-                int tamanhoCabecalho = indiceFim - inicio;
-                if (tamanhoCabecalho > maxBytesCabecalho) {
-                    throw new BadRequestException("Tamanho do cabeçalho (" + tamanhoCabecalho + " bytes) excedeu o limite permitido.");
+        LinhaRequisicao linhaRequisicao = null;
+        try {
+            while (true) {
+                if (linhaRequisicao == null) {
+                    int fimDaLinha = localizarFimDaLinha();
+                    if (fimDaLinha >= 0) {
+                        linhaRequisicao = interpretarLinhaRequisicao(new String(buffer, inicio,
+                                fimDaLinha - inicio, StandardCharsets.ISO_8859_1));
+                    }
+                }
+                int indiceFim = localizarFimDosCabecalhos();
+                if (indiceFim >= 0) {
+                    int tamanhoCabecalho = indiceFim - inicio;
+                    if (tamanhoCabecalho > maxBytesCabecalho) {
+                        throw new BadRequestException("Tamanho do cabeçalho (" + tamanhoCabecalho + " bytes) excedeu o limite permitido.");
+                    }
+
+                    byte[] bytesCabecalho = Arrays.copyOfRange(buffer, inicio, indiceFim);
+                    inicio = indiceFim + 4; // Pula os 4 bytes do \r\n\r\n
+
+                    return interpretarRequisicao(bytesCabecalho, linhaRequisicao);
                 }
 
-                byte[] bytesCabecalho = Arrays.copyOfRange(buffer, inicio, indiceFim);
-                inicio = indiceFim + 4; // Pula os 4 bytes do \r\n\r\n
-
-                return interpretarRequisicao(bytesCabecalho);
-            }
-
-            // Os três primeiros bytes de CRLFCRLF podem chegar separados do último.
-            if ((fim - inicio) - 3 > maxBytesCabecalho) {
-                throw new BadRequestException("Cabeçalhos excederam o limite máximo permitido sem encontrar o terminador CRLF.");
-            }
-
-            garantirEspacoNoBuffer();
-
-            int bytesLidos = entrada.read(buffer, fim, buffer.length - fim);
-            if (bytesLidos == -1) {
-                if (inicio == fim) {
-                    return null; // Encerramento limpo da conexão pelo cliente
+                // Os três primeiros bytes de CRLFCRLF podem chegar separados do último.
+                if ((fim - inicio) - 3 > maxBytesCabecalho) {
+                    throw new BadRequestException("Cabeçalhos excederam o limite máximo permitido sem encontrar o terminador CRLF.");
                 }
-                throw new BadRequestException("Conexão fechada prematuramente antes do término da requisição HTTP.");
-            }
 
-            fim += bytesLidos;
+                garantirEspacoNoBuffer();
+
+                int bytesLidos = entrada.read(buffer, fim, buffer.length - fim);
+                if (bytesLidos == -1) {
+                    if (inicio == fim) {
+                        return null; // Encerramento limpo da conexão pelo cliente
+                    }
+                    throw new BadRequestException("Conexão fechada prematuramente antes do término da requisição HTTP.");
+                }
+
+                fim += bytesLidos;
+            }
+        } catch (BadRequestException e) {
+            // Só uma linha completa e válida permite identificar HEAD; nunca examine
+            // bytes da próxima requisição para decidir se a resposta de erro tem corpo.
+            boolean apenasCabecalhos = linhaRequisicao != null && "HEAD".equals(linhaRequisicao.metodo());
+            throw new BadRequestException(e.getMessage(), e, apenasCabecalhos);
         }
+    }
+
+    private int localizarFimDaLinha() {
+        for (int i = inicio; i < fim - 1; i++) {
+            if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private int localizarFimDosCabecalhos() {
@@ -89,15 +124,11 @@ public class HttpRequestReader {
         }
     }
 
-    private HttpRequest interpretarRequisicao(byte[] bytesCabecalho) throws BadRequestException {
-        String texto = new String(bytesCabecalho, StandardCharsets.ISO_8859_1);
-        String[] linhas = texto.split("\r\n", -1);
-
-        if (linhas.length == 0 || linhas[0].isBlank()) {
+    private LinhaRequisicao interpretarLinhaRequisicao(String linhaRequisicao) throws BadRequestException {
+        if (linhaRequisicao.isBlank()) {
             throw new BadRequestException("Requisição vazia ou linha de requisição ausente.");
         }
 
-        String linhaRequisicao = linhas[0];
         String[] partes = linhaRequisicao.split(" ", -1);
         if (partes.length != 3) {
             throw new BadRequestException("Linha de requisição inválida. Esperado: <MÉTODO> <ALVO> <VERSÃO>");
@@ -125,7 +156,17 @@ public class HttpRequestReader {
             throw new BadRequestException("Versão HTTP não suportada: " + versao + ". Esperado HTTP/1.1.");
         }
 
-        Map<String, String> cabecalhos = new HashMap<>();
+        if ("GET".equals(metodo) || "HEAD".equals(metodo)) {
+            alvo = normalizarAlvo(alvo);
+        }
+        return new LinhaRequisicao(metodo, alvo, versao);
+    }
+
+    private HttpRequest interpretarRequisicao(byte[] bytesCabecalho, LinhaRequisicao requisicao)
+            throws BadRequestException {
+        String texto = new String(bytesCabecalho, StandardCharsets.ISO_8859_1);
+        String[] linhas = texto.split("\r\n", -1);
+        Map<String, String> cabecalhos = new LinkedHashMap<>();
         for (int i = 1; i < linhas.length; i++) {
             String linha = linhas[i];
             if (linha.isEmpty()) {
@@ -152,7 +193,7 @@ public class HttpRequestReader {
             valorCabecalho = valorCabecalho.trim();
 
             if (cabecalhos.containsKey(nomeCabecalho)) {
-                if ("connection".equals(nomeCabecalho)) {
+                if (CAMPOS_EM_LISTA.contains(nomeCabecalho)) {
                     cabecalhos.put(nomeCabecalho, cabecalhos.get(nomeCabecalho) + ", " + valorCabecalho);
                     continue;
                 }
@@ -164,6 +205,10 @@ public class HttpRequestReader {
 
         if (!cabecalhos.containsKey("host")) {
             throw new BadRequestException("Cabeçalho Host obrigatório em HTTP/1.1.");
+        }
+        // Host vazio é permitido quando a URI de destino não define autoridade.
+        if (!cabecalhos.get("host").isEmpty()) {
+            validarAutoridade(cabecalhos.get("host"));
         }
 
         String tamanhoCorpo = cabecalhos.get("content-length");
@@ -178,10 +223,72 @@ public class HttpRequestReader {
             }
         }
 
-        return new HttpRequest(metodo, alvo, versao, cabecalhos);
+        String codificacao = cabecalhos.get("transfer-encoding");
+        if (codificacao != null) {
+            validarCodificacao(codificacao);
+        }
+
+        return new HttpRequest(requisicao.metodo(), requisicao.alvo(), requisicao.versao(), cabecalhos);
+    }
+
+    private String normalizarAlvo(String alvo) throws BadRequestException {
+        if (alvo.startsWith("/")) {
+            return alvo;
+        }
+        try {
+            URI uri = new URI(alvo);
+            if (!"http".equalsIgnoreCase(uri.getScheme()) || uri.getRawAuthority() == null
+                    || uri.getRawFragment() != null) {
+                throw new BadRequestException("Alvo deve ser um caminho absoluto ou uma URI HTTP absoluta.");
+            }
+            validarAutoridade(uri.getRawAuthority());
+            String caminho = uri.getRawPath();
+            if (caminho == null || caminho.isEmpty()) {
+                caminho = "/";
+            }
+            // Não normalize '..' nem decodifique percent-encoding: o serviço de
+            // arquivos deve verificar a travessia no caminho original da URI.
+            return caminho + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+        } catch (URISyntaxException e) {
+            throw new BadRequestException("URI absoluta inválida.", e);
+        }
+    }
+
+    private void validarAutoridade(String autoridade) throws BadRequestException {
+        try {
+            // URI valida nome/IP e porta localmente, sem consultar DNS.
+            URI uri = new URI("http://" + autoridade).parseServerAuthority();
+            if (uri.getHost() == null || uri.getRawUserInfo() != null
+                    || !uri.getRawPath().isEmpty() || uri.getRawQuery() != null
+                    || uri.getRawFragment() != null) {
+                throw new BadRequestException("Host deve conter apenas nome/IP e porta opcional.");
+            }
+        } catch (URISyntaxException e) {
+            throw new BadRequestException("Host ou porta inválidos.", e);
+        }
+    }
+
+    private void validarCodificacao(String valor) throws BadRequestException {
+        // Este servidor aceita somente listas simples, sem parâmetros de codificação.
+        String[] codificacoes = valor.split(",", -1);
+        for (int i = 0; i < codificacoes.length; i++) {
+            String codificacao = codificacoes[i].trim();
+            if (!tokenValido(codificacao)) {
+                throw new BadRequestException("Transfer-Encoding deve conter uma lista de tokens sem parâmetros.");
+            }
+            if ("chunked".equalsIgnoreCase(codificacao) && i != codificacoes.length - 1) {
+                throw new BadRequestException("chunked deve aparecer somente no final de Transfer-Encoding.");
+            }
+        }
+        if (!"chunked".equalsIgnoreCase(codificacoes[codificacoes.length - 1].trim())) {
+            throw new BadRequestException("Transfer-Encoding em requisição deve terminar com chunked.");
+        }
     }
 
     private boolean tokenValido(String texto) {
-        return texto.matches("[!#$%&'*+.^_`|~0-9A-Za-z-]+");
+        return texto.matches(TOKEN);
+    }
+
+    private record LinhaRequisicao(String metodo, String alvo, String versao) {
     }
 }

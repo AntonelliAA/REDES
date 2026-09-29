@@ -18,7 +18,7 @@ public final class ServerMain {
             iniciarServidor(config);
         } catch (IllegalArgumentException e) {
             System.err.println("Erro: " + e.getMessage());
-            System.err.println("Uso: --port <1025..65535> --root <diretório> [--idle-timeout <ms>] [--workers <quantidade>]");
+            System.err.println("Uso: --port <1025..65535> --root <diretório> [--idle-timeout <ms>] [--workers <2 ou mais>]");
             System.exit(2);
         } catch (IOException e) {
             System.err.println("Erro de E/S ao iniciar servidor: " + e.getMessage());
@@ -31,33 +31,22 @@ public final class ServerMain {
         HttpResponseWriter escritor = new HttpResponseWriter("Grupo-Redes-HTTP1.1", Clock.systemUTC());
         ExecutorService poolTrabalhadores = Executors.newFixedThreadPool(config.quantidadeTrabalhadores());
 
-        ServerSocket serverSocket = new ServerSocket();
-        serverSocket.setReuseAddress(true);
-        serverSocket.bind(new InetSocketAddress("0.0.0.0", config.porta()));
+        try (ServerSocket serverSocket = new ServerSocket()) {
+            serverSocket.setReuseAddress(true);
+            serverSocket.bind(new InetSocketAddress("0.0.0.0", config.porta()));
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                serverSocket.close();
-            } catch (IOException ignored) {
-            }
-            poolTrabalhadores.shutdownNow();
-        }));
+            System.out.println("Servidor HTTP/1.1 escutando em 0.0.0.0:" + config.porta());
+            System.out.println("Diretório raiz: " + config.raiz());
+            System.out.println("Timeout ocioso de leitura: " + config.tempoLimiteOciosoMs() + " ms");
+            System.out.println("Workers no pool: " + config.quantidadeTrabalhadores());
 
-        System.out.println("Servidor HTTP/1.1 escutando em 0.0.0.0:" + config.porta());
-        System.out.println("Diretório raiz: " + config.raiz());
-        System.out.println("Timeout ocioso: " + config.tempoLimiteOciosoMs() + " ms");
-        System.out.println("Workers no pool: " + config.quantidadeTrabalhadores());
-
-        while (!serverSocket.isClosed()) {
-            try {
+            while (true) {
                 Socket cliente = serverSocket.accept();
-                poolTrabalhadores.submit(new HttpConnectionHandler(cliente, servicoArquivos, escritor, config.tempoLimiteOciosoMs()));
-            } catch (IOException e) {
-                if (serverSocket.isClosed()) {
-                    break;
-                }
-                System.err.println("Erro ao aceitar conexão TCP: " + e.getMessage());
+                poolTrabalhadores.execute(new HttpConnectionHandler(
+                        cliente, servicoArquivos, escritor, config.tempoLimiteOciosoMs()));
             }
+        } finally {
+            poolTrabalhadores.shutdownNow();
         }
     }
 }

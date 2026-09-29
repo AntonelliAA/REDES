@@ -20,6 +20,12 @@ public final class ServerConfigTest {
         TestSupport.esperarExcecao(IllegalArgumentException.class, () -> ServerConfig.fromArgs(new String[]{"--port", "abc", "--root", diretorioRaiz.toString()}));
         TestSupport.esperarExcecao(IllegalArgumentException.class, () -> ServerConfig.fromArgs(new String[]{"--port", "8080"}));
         TestSupport.esperarExcecao(IllegalArgumentException.class, () -> ServerConfig.fromArgs(new String[]{"--port", "8080", "--root", diretorioRaiz.resolve("missing").toString()}));
+        for (String workers : new String[]{"-1", "0", "1"}) {
+            TestSupport.esperarExcecao(IllegalArgumentException.class, () -> ServerConfig.fromArgs(new String[]{"--port", "8080", "--root", diretorioRaiz.toString(), "--workers", workers}));
+        }
+        ServerConfig doisWorkers = ServerConfig.fromArgs(new String[]{"--port", "8080", "--root", diretorioRaiz.toString(), "--workers", "2"});
+        TestSupport.checar(doisWorkers.quantidadeTrabalhadores() == 2, "dois workers permitem concorrência");
+        TestSupport.esperarExcecao(IllegalArgumentException.class, () -> new ServerConfig(8080, diretorioRaiz, 5000, 1));
 
         System.out.println("ServerConfigTest: OK");
     }

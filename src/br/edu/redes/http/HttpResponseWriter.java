@@ -1,7 +1,9 @@
 package br.edu.redes.http;
 
 import java.io.IOException;
+import java.io.EOFException;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.ZoneOffset;
@@ -46,8 +48,8 @@ public class HttpResponseWriter {
         // 3. Identificador Server
         cabecalhos.append("Server: ").append(nomeServidor).append("\r\n");
 
-        // 4. Content-Length (sempre calculado sobre o tamanho real do corpo)
-        cabecalhos.append("Content-Length: ").append(resposta.corpo().length).append("\r\n");
+        // 4. O tamanho é long: HEAD e arquivos grandes não dependem de um byte[].
+        cabecalhos.append("Content-Length: ").append(resposta.tamanhoConteudo()).append("\r\n");
 
         // 5. Content-Type se presente
         if (resposta.tipoConteudo() != null && !resposta.tipoConteudo().isBlank()) {
@@ -71,8 +73,24 @@ public class HttpResponseWriter {
         saida.write(cabecalhos.toString().getBytes(StandardCharsets.ISO_8859_1));
 
         // Escrever corpo da mensagem se não for requisição HEAD
-        if (!apenasCabecalhos && resposta.corpo().length > 0) {
-            saida.write(resposta.corpo());
+        if (!apenasCabecalhos) {
+            if (resposta.arquivo() != null) {
+                ByteBuffer bloco = ByteBuffer.allocate(16 * 1024);
+                long restante = resposta.tamanhoConteudo();
+                while (restante > 0) {
+                    bloco.clear();
+                    bloco.limit((int) Math.min(bloco.capacity(), restante));
+                    int lidos = resposta.arquivo().read(bloco);
+                    if (lidos < 0) {
+                        // Não reutilizar a conexão se o arquivo encolheu durante o envio.
+                        throw new EOFException("Arquivo terminou antes do Content-Length anunciado.");
+                    }
+                    saida.write(bloco.array(), 0, lidos);
+                    restante -= lidos;
+                }
+            } else if (resposta.corpo().length > 0) {
+                saida.write(resposta.corpo());
+            }
         }
 
         saida.flush();

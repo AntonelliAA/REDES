@@ -8,33 +8,35 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Locale;
 
 public class StaticFileService {
     private final Path raiz;
-    private final Path raizReal;
 
     public StaticFileService(Path raiz) {
         if (raiz == null) {
             throw new IllegalArgumentException("O diretório raiz não pode ser nulo.");
         }
         try {
-            this.raiz = raiz.toAbsolutePath().normalize();
-            this.raizReal = this.raiz.toRealPath();
+            this.raiz = raiz.toAbsolutePath().normalize().toRealPath();
         } catch (IOException e) {
             throw new IllegalArgumentException("Diretório raiz inacessível: " + raiz, e);
         }
-        if (!Files.isDirectory(this.raizReal)) {
+        if (!Files.isDirectory(this.raiz)) {
             throw new IllegalArgumentException("O caminho configurado não é um diretório: " + raiz);
         }
     }
 
     public FileResult obter(String alvoRequisicao) {
         if (alvoRequisicao == null || alvoRequisicao.isEmpty()) {
-            return new FileResult(400, null, null);
+            return FileResult.erro(400);
         }
 
         // Remove a query string (?...)
@@ -45,7 +47,7 @@ public class StaticFileService {
         }
 
         if (!caminhoComBarra.startsWith("/")) {
-            return new FileResult(400, null, null);
+            return FileResult.erro(400);
         }
 
         // Decodificação segura de percent-encoding
@@ -53,7 +55,7 @@ public class StaticFileService {
         try {
             caminhoDecodificado = decodificarPercentEncoding(caminhoComBarra);
         } catch (IllegalArgumentException e) {
-            return new FileResult(400, null, null);
+            return FileResult.erro(400);
         }
 
         // Remove barras iniciais redundantes
@@ -65,17 +67,12 @@ public class StaticFileService {
         try {
             candidato = raiz.resolve(caminhoDecodificado).normalize();
         } catch (InvalidPathException e) {
-            return new FileResult(400, null, null);
+            return FileResult.erro(400);
         }
 
         // Verificação 1: o caminho normalizado está estritamente contido no diretório raiz?
         if (!candidato.startsWith(raiz)) {
-            return new FileResult(403, null, null);
-        }
-
-        // Se o arquivo ou diretório não existir fisicamente:
-        if (!Files.exists(candidato)) {
-            return new FileResult(404, null, null);
+            return FileResult.erro(403);
         }
 
         // Verificação 2: resolução segura de links simbólicos (symlinks)
@@ -83,11 +80,11 @@ public class StaticFileService {
         try {
             candidatoReal = candidato.toRealPath();
         } catch (IOException e) {
-            return new FileResult(404, null, null);
+            return FileResult.erro(404);
         }
 
-        if (!candidatoReal.startsWith(raizReal)) {
-            return new FileResult(403, null, null);
+        if (!candidatoReal.startsWith(raiz)) {
+            return FileResult.erro(403);
         }
 
         // Se for um diretório, tentar servir o index.html contido nele
@@ -95,23 +92,33 @@ public class StaticFileService {
             try {
                 candidatoReal = candidatoReal.resolve("index.html").toRealPath();
             } catch (IOException e) {
-                return new FileResult(404, null, null); // Nunca listar diretórios
+                return FileResult.erro(404); // Nunca listar diretórios
             }
-            if (!candidatoReal.startsWith(raizReal)) {
-                return new FileResult(403, null, null);
+            if (!candidatoReal.startsWith(raiz)) {
+                return FileResult.erro(403);
             }
         }
 
         if (!Files.isRegularFile(candidatoReal)) {
-            return new FileResult(404, null, null);
+            return FileResult.erro(404);
         }
 
         try {
-            byte[] corpo = Files.readAllBytes(candidatoReal);
-            String tipoMime = descobrirTipoMime(candidatoReal.getFileName().toString());
-            return new FileResult(200, corpo, tipoMime);
+            // Mantém o mesmo arquivo aberto até o fim da resposta e não segue
+            // um link introduzido no arquivo final entre a validação e a abertura.
+            SeekableByteChannel canal = Files.newByteChannel(candidatoReal,
+                    StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
+            try {
+                return new FileResult(200, canal, canal.size(),
+                        descobrirTipoMime(candidatoReal.getFileName().toString()));
+            } catch (IOException | RuntimeException e) {
+                canal.close();
+                throw e;
+            }
+        } catch (AccessDeniedException e) {
+            return FileResult.erro(403);
         } catch (IOException e) {
-            return new FileResult(404, null, null);
+            return FileResult.erro(404);
         }
     }
 

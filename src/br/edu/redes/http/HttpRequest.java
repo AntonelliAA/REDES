@@ -1,12 +1,13 @@
 package br.edu.redes.http;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
 public record HttpRequest(String metodo, String alvo, String versao, Map<String, String> cabecalhos) {
     public HttpRequest {
-        cabecalhos = Collections.unmodifiableMap(cabecalhos);
+        cabecalhos = Collections.unmodifiableMap(new LinkedHashMap<>(cabecalhos));
     }
 
     public String obterCabecalho(String nome) {

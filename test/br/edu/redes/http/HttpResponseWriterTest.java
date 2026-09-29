@@ -2,10 +2,14 @@ package br.edu.redes.http;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Arrays;
 
 public final class HttpResponseWriterTest {
     private HttpResponseWriterTest() {
@@ -50,6 +54,39 @@ public final class HttpResponseWriterTest {
         TestSupport.checar(texto405.contains("Connection: close\r\n"), "Connection: close presente");
         TestSupport.checar(texto405.contains("Content-Length: " + resp405.corpo().length + "\r\n"), "Content-Length de erro");
 
+        testarArquivoEmBlocos(escritor);
         System.out.println("HttpResponseWriterTest: OK");
+    }
+
+    private static void testarArquivoEmBlocos(HttpResponseWriter escritor) throws Exception {
+        // Pequeno arquivo binário que exige mais de um bloco de envio.
+        byte[] conteudo = new byte[40_000];
+        for (int i = 0; i < conteudo.length; i++) {
+            conteudo[i] = (byte) (i % 251);
+        }
+        Path caminho = Files.createTempFile("http-blocos-", ".bin");
+        try {
+            Files.write(caminho, conteudo);
+            try (FileResult arquivo = new FileResult(200,
+                    Files.newByteChannel(caminho, StandardOpenOption.READ), conteudo.length,
+                    "application/octet-stream")) {
+                HttpResponse resposta = HttpResponse.deArquivo(arquivo, false);
+                ByteArrayOutputStream head = new ByteArrayOutputStream();
+                escritor.escrever(head, resposta, true);
+                TestSupport.checar(arquivo.canal().position() == 0, "HEAD não deve ler o corpo do arquivo");
+                TestSupport.checar(head.toString(StandardCharsets.ISO_8859_1).contains("Content-Length: 40000\r\n"),
+                        "HEAD deve anunciar o tamanho completo do arquivo");
+
+                ByteArrayOutputStream get = new ByteArrayOutputStream();
+                escritor.escrever(get, resposta, false);
+                byte[] bytes = get.toByteArray();
+                TestSupport.checar(Arrays.equals(head.toByteArray(), Arrays.copyOf(bytes, head.size())),
+                        "HEAD e GET devem conter os mesmos cabeçalhos");
+                TestSupport.checar(Arrays.equals(conteudo, Arrays.copyOfRange(bytes, head.size(), bytes.length)),
+                        "GET deve preservar todo o conteúdo binário entre os blocos");
+            }
+        } finally {
+            Files.deleteIfExists(caminho);
+        }
     }
 }

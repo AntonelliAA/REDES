@@ -4,7 +4,7 @@ Servidor de arquivos estáticos construído com `ServerSocket` e `Socket`, sem b
 
 ## Compilação e execução
 
-Requer JDK 17 ou superior. Os scripts usam Bash; os testes em rede também usam `curl` e Wireshark. Confirme que o JDK está disponível na VDI, sem instalar um runtime adicional.
+Requer JDK 17 ou superior. Os scripts usam Bash; os testes em rede também usam `curl` e Wireshark. A compilação utiliza `--release 17`, mesmo quando executada com um JDK mais recente.
 
 Execute os comandos na raiz do projeto:
 
@@ -20,8 +20,8 @@ A compilação gera `out/main` e `out/test`. Os scripts de teste e execução ta
 | :--- | :---: | :--- | :--- |
 | `--port <porta>` | Sim | — | Porta entre 1025 e 65535. |
 | `--root <diretório>` | Sim | — | Diretório existente que contém os arquivos servidos. |
-| `--idle-timeout <ms>` | Não | `5000` | Timeout de leitura ociosa da conexão, em milissegundos. |
-| `--workers <quantidade>` | Não | `max(4, CPUs)` | Quantidade de threads de atendimento. Use pelo menos 2 no teste de concorrência. |
+| `--idle-timeout <ms>` | Não | `5000` | Tempo máximo aguardando dados em uma leitura do socket, em milissegundos. |
+| `--workers <quantidade>` | Não | `max(4, CPUs)` | Quantidade de threads de atendimento, no mínimo 2. |
 
 Exemplo:
 
@@ -31,13 +31,17 @@ bash scripts/run.sh --port 8080 --root ./www --idle-timeout 5000 --workers 8
 
 ## Arquitetura
 
-- `ServerMain` aceita conexões e as entrega a um pool fixo de threads. Cada conexão ocupa uma thread enquanto é atendida; conexões adicionais aguardam uma thread livre. Um cliente lento não bloqueia os demais enquanto há threads disponíveis.
-- `HttpRequestReader` acumula bytes até `\r\n\r\n` e preserva o excedente para a próxima requisição.
-- `StaticFileService` decodifica o caminho, verifica os limites da raiz e resolve caminhos reais para impedir acesso por links simbólicos externos.
-- `HttpResponseWriter` escreve status, `Date` em GMT, `Server`, tipo e tamanho do conteúdo. HEAD recebe os cabeçalhos correspondentes ao GET, sem corpo.
+- `ServerMain` aceita conexões e as entrega a um pool fixo de threads. Cada conexão ocupa uma thread enquanto é atendida; as demais aguardam na fila do executor.
+- `HttpRequestReader` acumula bytes até `\r\n\r\n` e preserva o excedente para a próxima requisição. Valida Host e enquadramento do corpo, aceita cabeçalhos de lista repetidos e extrai o caminho de alvos HTTP absolutos sem remover tentativas de travessia.
+- `StaticFileService` decodifica e normaliza o caminho, verifica se o caminho real está dentro da raiz e abre o arquivo. O canal permanece aberto até a resposta terminar.
+- `HttpResponseWriter` escreve status, `Date` em GMT, `Server`, tipo e tamanho do conteúdo. GET transmite blocos de até 16 KiB; HEAD envia os cabeçalhos sem ler o corpo, inclusive nas respostas 400 quando a linha HEAD foi reconhecida. Se um arquivo encolher durante o envio, a conexão fecha; se crescer, são enviados apenas os bytes anunciados.
 - `HttpConnectionHandler` mantém a conexão por padrão e a encerra quando solicitado com `Connection: close`, por timeout ou quando necessário para rejeitar uma requisição inválida.
 
-O servidor não processa corpos de requisição. Se houver `Content-Length` positivo ou `Transfer-Encoding`, responde com `Connection: close` para não interpretar o corpo como outra requisição. `Content-Length: 0` permite persistência; métodos não suportados recebem 405.
+O servidor não processa corpos de requisição. Se houver `Content-Length` positivo ou `Transfer-Encoding` aceito, responde com `Connection: close` para não interpretar o corpo como outra requisição. O parser aceita `Transfer-Encoding` como uma lista de nomes sem parâmetros, com `chunked` na última posição. `Content-Length: 0` permite persistência; métodos não suportados recebem 405. Enquadramento inválido, como `Transfer-Encoding: gzip` sem `chunked` final, recebe 400 e fechamento.
+
+O timeout se aplica à leitura, não à escrita: um cliente que pare de receber dados pode manter uma thread ocupada. A fila do executor não tem limite configurado.
+
+O diretório raiz deve ser confiável: a validação bloqueia travessias e links externos estáticos, mas não garante proteção contra modificações locais concorrentes da árvore.
 
 ## Verificação dos métodos e códigos de status
 

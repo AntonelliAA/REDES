@@ -20,6 +20,11 @@ public final class HttpRequestReaderTest {
         testarErrosSintaxe();
         testarCabecalhosDeCorpo();
         testarConnectionRepetido();
+        testarHost();
+        testarTransferEncoding();
+        testarListasRepetidas();
+        testarAlvoAbsoluto();
+        testarHeadEmErrosDeParsing();
         testarLimiteTamanho();
         testarTerminadorFragmentadoNoLimite();
         System.out.println("HttpRequestReaderTest: OK");
@@ -166,6 +171,132 @@ public final class HttpRequestReaderTest {
                 new ByteArrayInputStream(texto.getBytes(StandardCharsets.ISO_8859_1)), 1024).ler();
         TestSupport.checar("keep-alive, close".equals(requisicao.obterCabecalho("connection")),
                 "Connection repetido preserva todos os tokens, incluindo close");
+    }
+
+    private static void testarHost() throws Exception {
+        String[] validos = {"", "localhost", "127.0.0.1:8080", "rede.exemplo", "[::1]",
+                "[2001:db8::1]:8080", "[::ffff:192.0.2.1]", "localhost:"};
+        for (String host : validos) {
+            HttpRequest requisicao = ler("GET / HTTP/1.1\r\nHost: " + host + "\r\n\r\n");
+            TestSupport.checar(host.equals(requisicao.obterCabecalho("host")), "Host válido: " + host);
+        }
+        String[] invalidos = {"nome invalido", "localhost:abc", "localhost:-1", "user@host",
+                "localhost/path", "localhost?query", "localhost#fragment", "::1", "[::1",
+                "[abc]", "[1:2:3]:80", "[::1]resto", "[::1]:abc", "host%zz", "host\\outro"};
+        for (String host : invalidos) {
+            TestSupport.esperarExcecao(BadRequestException.class,
+                    () -> ler("GET / HTTP/1.1\r\nHost: " + host + "\r\n\r\n"));
+        }
+    }
+
+    private static void testarTransferEncoding() throws Exception {
+        String[] validos = {"chunked", "Chunked", "gzip, chunked", "gzip\r\nTransfer-Encoding: chunked",
+                "gzip,\tchunked"};
+        for (String valor : validos) {
+            TestSupport.checar(ler("GET / HTTP/1.1\r\nHost: teste\r\nTransfer-Encoding: "
+                    + valor + "\r\n\r\n") != null, "Transfer-Encoding válido: " + valor);
+        }
+        String[] invalidos = {"", "gzip", "chunked, gzip", "chunked, chunked", "chunked; x=1",
+                "chunked,", ",chunked", "gzip,,chunked", "gzip chunked", "gzip; x=1, chunked", "chun(ked",
+                "chunked\r\nTransfer-Encoding: gzip"};
+        for (String valor : invalidos) {
+            TestSupport.esperarExcecao(BadRequestException.class,
+                    () -> ler("GET / HTTP/1.1\r\nHost: teste\r\nTransfer-Encoding: " + valor + "\r\n\r\n"));
+        }
+    }
+
+    private static void testarListasRepetidas() throws Exception {
+        HttpRequest requisicao = ler("GET / HTTP/1.1\r\nHost: teste\r\n"
+                + "Accept: text/plain\r\nAccept: text/html;q=0.5\r\n"
+                + "Accept-Encoding: gzip\r\nAccept-Encoding: identity\r\n"
+                + "Cache-Control: no-cache\r\nCache-Control: max-age=0\r\n\r\n");
+        TestSupport.checar("text/plain, text/html;q=0.5".equals(requisicao.obterCabecalho("accept")),
+                "Accept repetido deve preservar valores e ordem");
+        TestSupport.checar("gzip, identity".equals(requisicao.obterCabecalho("accept-encoding")),
+                "Accept-Encoding repetido é uma lista");
+        TestSupport.checar("no-cache, max-age=0".equals(requisicao.obterCabecalho("cache-control")),
+                "Cache-Control repetido é uma lista");
+        TestSupport.esperarExcecao(BadRequestException.class,
+                () -> ler("GET / HTTP/1.1\r\nHost: a\r\nHOST: a\r\n\r\n"));
+        TestSupport.esperarExcecao(BadRequestException.class,
+                () -> ler("GET / HTTP/1.1\r\nHost: a\r\nContent-Length: 0\r\ncontent-length: 0\r\n\r\n"));
+        TestSupport.esperarExcecao(BadRequestException.class,
+                () -> ler("GET / HTTP/1.1\r\nHost: a\r\nAuthorization: a\r\nAuthorization: b\r\n\r\n"));
+    }
+
+    private static void testarAlvoAbsoluto() throws Exception {
+        String[][] validos = {
+            {"http://localhost:8080/ok.txt", "/ok.txt"},
+            {"http://localhost", "/"},
+            {"HTTP://localhost?chave=valor", "/?chave=valor"},
+            {"http://[::1]:8080/a%20b.txt?q=%23", "/a%20b.txt?q=%23"},
+            {"http://localhost/../segredo", "/../segredo"},
+            {"http://localhost/%2e%2e/%2e%2e/segredo", "/%2e%2e/%2e%2e/segredo"}
+        };
+        for (String metodo : new String[] {"GET", "HEAD"}) {
+            for (String[] alvo : validos) {
+                HttpRequest requisicao = ler(metodo + " " + alvo[0] + " HTTP/1.1\r\nHost: teste\r\n\r\n");
+                TestSupport.checar(alvo[1].equals(requisicao.alvo()),
+                        "Forma absoluta deve preservar o caminho bruto, inclusive travessia: " + alvo[0]);
+            }
+        }
+        String[] invalidos = {"http://localhost:abc/ok.txt", "http:///ok.txt", "http://user@host/ok.txt",
+                "http://localhost/ok.txt#fragmento", "http://[abc]/ok.txt", "http://localhost/%zz",
+                "http:arquivo", "arquivo", "*"};
+        for (String alvo : invalidos) {
+            TestSupport.esperarExcecao(BadRequestException.class,
+                    () -> ler("GET " + alvo + " HTTP/1.1\r\nHost: teste\r\n\r\n"));
+        }
+        TestSupport.checar("OPTIONS".equals(ler("OPTIONS * HTTP/1.1\r\nHost: teste\r\n\r\n").metodo()),
+                "Método não suportado deve chegar ao handler para resposta 405");
+    }
+
+    private static void testarHeadEmErrosDeParsing() throws Exception {
+        String[] falhasAposHead = {
+            "HEAD / HTTP/1.1\r\nSemSeparador\r\n\r\n",
+            "HEAD / HTTP/1.1\r\n\r\n",
+            "HEAD / HTTP/1.1\r\nHost: nome invalido\r\n\r\n",
+            "HEAD / HTTP/1.1\r\nHost: teste",
+            "HEAD / HTTP/1.1\r\nHost: teste\r\nX-Long: " + "a".repeat(200) + "\r\n\r\n",
+            "HEAD / HTTP/1.1\r\nHost: teste\r\nX-Long: " + "a".repeat(200)
+        };
+        for (String texto : falhasAposHead) {
+            HttpRequestReader leitor = new HttpRequestReader(new FragmentedInputStream(
+                    new ByteArrayInputStream(texto.getBytes(StandardCharsets.ISO_8859_1)), 2), 100);
+            checarErroHead(leitor, true);
+        }
+        String[] linhasInvalidas = {
+            "HEAD / HTTP/1.0\r\nHost: teste\r\n\r\n",
+            "HEAD  / HTTP/1.1\r\nHost: teste\r\n\r\n",
+            "HEAD / HTTP/1.1",
+            "HEAD /#fragmento HTTP/1.1\r\nHost: teste\r\n\r\n",
+            "HEAD http://localhost:abc/ HTTP/1.1\r\nHost: teste\r\n\r\n",
+            "GET / HTTP/1.1\r\nSemSeparador\r\n\r\nHEAD / HTTP/1.1\r\nHost: teste\r\n\r\n"
+        };
+        for (String texto : linhasInvalidas) {
+            checarErroHead(new HttpRequestReader(new ByteArrayInputStream(
+                    texto.getBytes(StandardCharsets.ISO_8859_1)), 1024), false);
+        }
+        String sequencia = "HEAD / HTTP/1.1\r\nHost: teste\r\n\r\nGET / HTTP/1.1\r\nSemSeparador\r\n\r\n";
+        HttpRequestReader leitor = new HttpRequestReader(new ByteArrayInputStream(
+                sequencia.getBytes(StandardCharsets.ISO_8859_1)), 1024);
+        TestSupport.checar("HEAD".equals(leitor.ler().metodo()), "Primeiro HEAD válido");
+        checarErroHead(leitor, false);
+    }
+
+    private static void checarErroHead(HttpRequestReader leitor, boolean esperado) throws Exception {
+        try {
+            leitor.ler();
+            throw new AssertionError("Esperava BadRequestException");
+        } catch (BadRequestException e) {
+            TestSupport.checar(e.apenasCabecalhos() == esperado,
+                    "HEAD só deve omitir corpo quando a linha desta requisição foi validada");
+        }
+    }
+
+    private static HttpRequest ler(String texto) throws Exception {
+        return new HttpRequestReader(new ByteArrayInputStream(texto.getBytes(StandardCharsets.ISO_8859_1)),
+                8192).ler();
     }
 
     private static void testarLimiteTamanho() {

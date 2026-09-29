@@ -53,6 +53,8 @@ public final class ServerIntegrationTest {
             // 2. HEAD de sucesso e de erro, sem corpo antes da próxima resposta
             testarHead200(porta);
             testarHead404(porta);
+            testarHeadMalformado(porta);
+            testarNovosCasosDeParser(porta);
 
             // 3. POST 405 Method Not Allowed
             testarMetodoNaoPermitido405(porta);
@@ -97,6 +99,46 @@ public final class ServerIntegrationTest {
             TestSupport.checar(resposta.status == 200, "GET deve retornar 200");
             TestSupport.checar("conteudo de teste".equals(new String(resposta.corpo, StandardCharsets.UTF_8)), "Corpo de GET correto");
             TestSupport.checar("text/plain; charset=utf-8".equals(resposta.obterCabecalho("content-type")), "Content-Type correto");
+        }
+    }
+
+    private static void testarHeadMalformado(int porta) throws Exception {
+        String[] cabecalhos = {
+            "Host: localhost\r\nSemDoisPontos\r\n",
+            "Host: nome invalido\r\n",
+            "Host: localhost\r\nTransfer-Encoding: gzip\r\n",
+            ""
+        };
+        for (String cabecalho : cabecalhos) {
+            try (Socket socket = conectar(porta)) {
+                enviarRequisicao(socket, "HEAD /teste.txt HTTP/1.1\r\n" + cabecalho + "\r\n");
+                RespostaHttp resposta = lerResposta(socket, true);
+                TestSupport.checar(resposta.status == 400, "HEAD malformado deve receber 400");
+                TestSupport.checar("17".equals(resposta.obterCabecalho("content-length")),
+                        "HEAD 400 mantém o tamanho que o GET teria");
+                checarFechamento(socket, resposta);
+            }
+        }
+    }
+
+    private static void testarNovosCasosDeParser(int porta) throws Exception {
+        String[][] casos = {
+            {"GET /teste.txt HTTP/1.1\r\nHost: nome invalido\r\n", "400"},
+            {"GET /teste.txt HTTP/1.1\r\nHost: localhost:abc\r\n", "400"},
+            {"GET /teste.txt HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: gzip\r\n", "400"},
+            {"GET /teste.txt HTTP/1.1\r\nHost: localhost\r\nAccept: text/plain\r\nAccept: text/html\r\n", "200"},
+            {"GET http://localhost/space%20name.txt HTTP/1.1\r\nHost: localhost\r\n", "404"},
+            {"GET http://localhost/teste.txt HTTP/1.1\r\nHost: localhost\r\n", "200"},
+            {"GET http://localhost/%2e%2e/outside.txt HTTP/1.1\r\nHost: localhost\r\n", "403"}
+        };
+        for (String[] caso : casos) {
+            try (Socket socket = conectar(porta)) {
+                enviarRequisicao(socket, caso[0] + "Connection: close\r\n\r\n");
+                RespostaHttp resposta = lerResposta(socket);
+                TestSupport.checar(resposta.status == Integer.parseInt(caso[1]),
+                        "Status esperado para " + caso[0]);
+                checarFechamento(socket, resposta);
+            }
         }
     }
 

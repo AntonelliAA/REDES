@@ -38,7 +38,7 @@ public class HttpConnectionHandler implements Runnable {
                     requisicao = leitor.ler();
                 } catch (BadRequestException e) {
                     HttpResponse resposta400 = HttpResponse.erro(400, true, Map.of());
-                    escritor.escrever(saida, resposta400, false);
+                    escritor.escrever(saida, resposta400, e.apenasCabecalhos());
                     break;
                 }
 
@@ -71,16 +71,12 @@ public class HttpConnectionHandler implements Runnable {
                     escritor.escrever(saida, resposta405, false);
                 } else {
                     boolean apenasCabecalhos = "HEAD".equals(metodo);
-                    FileResult resultado = arquivos.obter(requisicao.alvo());
-
-                    HttpResponse resposta;
-                    if (resultado.status() == 200) {
-                        resposta = new HttpResponse(200, resultado.tipoConteudo(), resultado.corpo(), fecharConexao, Map.of());
-                    } else {
-                        resposta = HttpResponse.erro(resultado.status(), fecharConexao, Map.of());
+                    try (FileResult resultado = arquivos.obter(requisicao.alvo())) {
+                        HttpResponse resposta = resultado.status() == 200
+                                ? HttpResponse.deArquivo(resultado, fecharConexao)
+                                : HttpResponse.erro(resultado.status(), fecharConexao, Map.of());
+                        escritor.escrever(saida, resposta, apenasCabecalhos);
                     }
-
-                    escritor.escrever(saida, resposta, apenasCabecalhos);
                 }
 
                 if (fecharConexao) {

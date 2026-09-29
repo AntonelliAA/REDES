@@ -9,13 +9,15 @@
 
 ## 1. Arquitetura e concorrência
 
-O servidor utiliza `java.net.ServerSocket` e `java.net.Socket`, sem biblioteca HTTP de servidor. `ServerConfig` valida porta, raiz, timeout e quantidade de threads. `ServerMain` escuta em `0.0.0.0` e entrega os sockets aceitos a um pool fixo de threads.
+O servidor utiliza `java.net.ServerSocket` e `java.net.Socket`, sem biblioteca HTTP de servidor. `ServerConfig` valida porta, raiz, timeout e quantidade de threads (no mínimo duas). `ServerMain` escuta em `0.0.0.0` e entrega os sockets aceitos a um pool fixo de threads.
 
-`HttpRequestReader` acumula bytes até `\r\n\r\n` e conserva o excedente para a próxima requisição. `StaticFileService` decodifica percent-encoding e verifica que os caminhos normalizados e reais permanecem na raiz, incluindo a resolução de links simbólicos. `HttpResponseWriter` escreve a resposta HTTP/1.1 com `Date` em GMT, `Server`, `Content-Type` e `Content-Length`; HEAD omite o corpo correspondente ao GET. `HttpConnectionHandler` atende requisições sucessivas até `Connection: close`, timeout ocioso ou encerramento do cliente.
+`HttpRequestReader` acumula bytes até `\r\n\r\n` e conserva o excedente para a próxima requisição. Valida Host e enquadramento, aceita cabeçalhos de lista repetidos e alvos HTTP absolutos. `StaticFileService` decodifica percent-encoding, verifica a contenção na raiz e mantém aberto o canal do arquivo durante a resposta. `HttpResponseWriter` escreve a resposta HTTP/1.1 com `Date` em GMT, `Server`, `Content-Type` e `Content-Length`; GET envia blocos de até 16 KiB, enquanto HEAD usa o tamanho do arquivo sem ler seu corpo. Erros posteriores ao reconhecimento da linha HEAD também omitem o corpo. `HttpConnectionHandler` atende requisições sucessivas até `Connection: close`, timeout ou encerramento do cliente.
 
-Corpos de requisição não são processados: `Content-Length` positivo ou `Transfer-Encoding` fazem a resposta encerrar a conexão, evitando confundir o corpo com uma próxima requisição. `Content-Length: 0` permite persistência. Métodos diferentes de GET e HEAD recebem 405.
+Corpos de requisição não são processados: `Content-Length` positivo ou `Transfer-Encoding` aceito fazem a resposta encerrar a conexão, evitando confundir o corpo com uma próxima requisição. O parser aceita `Transfer-Encoding` como uma lista de nomes sem parâmetros, com `chunked` na última posição. Enquadramento inválido recebe 400. `Content-Length: 0` permite persistência. Métodos diferentes de GET e HEAD recebem 405.
 
-O pool fixo limita o número de threads e mantém o código simples. Uma conexão lenta ocupa uma thread; outras podem progredir enquanto houver threads livres. Quando todas estão ocupadas, as novas conexões aguardam. Essa escolha atende ao teste de concorrência com pelo menos dois workers, mas não constitui proteção completa contra esgotamento de recursos.
+O pool fixo limita o número de threads. Cada conexão ocupa uma thread; outras podem progredir enquanto houver threads livres. Quando todas estão ocupadas, novas conexões aguardam na fila do executor, sem limite configurado. O timeout de leitura trata clientes ociosos aguardando requisições; não há timeout de escrita, portanto um cliente que pare de receber dados pode manter uma thread ocupada.
+
+O diretório raiz deve ser confiável: a validação bloqueia travessias e links externos estáticos, mas não garante proteção contra modificações locais concorrentes da árvore.
 
 Configuração usada: porta [preencher], raiz [preencher], workers [preencher], timeout [preencher] ms.
 

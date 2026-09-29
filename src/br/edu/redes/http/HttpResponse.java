@@ -1,10 +1,18 @@
 package br.edu.redes.http;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.SeekableByteChannel;
 import java.util.Collections;
 import java.util.Map;
 
-public record HttpResponse(int status, String tipoConteudo, byte[] corpo, boolean fecharConexao, Map<String, String> cabecalhosExtras) {
+public record HttpResponse(int status, String tipoConteudo, byte[] corpo, boolean fecharConexao,
+                           Map<String, String> cabecalhosExtras, long tamanhoConteudo, SeekableByteChannel arquivo) {
+    public HttpResponse(int status, String tipoConteudo, byte[] corpo, boolean fecharConexao,
+                        Map<String, String> cabecalhosExtras) {
+        this(status, tipoConteudo, corpo, fecharConexao, cabecalhosExtras,
+                corpo == null ? 0 : corpo.length, null);
+    }
+
     public HttpResponse {
         if (corpo == null) {
             corpo = new byte[0];
@@ -12,8 +20,13 @@ public record HttpResponse(int status, String tipoConteudo, byte[] corpo, boolea
         if (cabecalhosExtras == null) {
             cabecalhosExtras = Collections.emptyMap();
         } else {
-            cabecalhosExtras = Collections.unmodifiableMap(cabecalhosExtras);
+            cabecalhosExtras = Map.copyOf(cabecalhosExtras);
         }
+    }
+
+    public static HttpResponse deArquivo(FileResult resultado, boolean fecharConexao) {
+        return new HttpResponse(200, resultado.tipoConteudo(), null, fecharConexao,
+                Map.of(), resultado.tamanho(), resultado.canal());
     }
 
     public static String obterRazaoStatus(int status) {

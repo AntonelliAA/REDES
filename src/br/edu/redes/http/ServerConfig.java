@@ -5,6 +5,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public record ServerConfig(int porta, Path raiz, int tempoLimiteOciosoMs, int quantidadeTrabalhadores) {
+    public ServerConfig {
+        if (quantidadeTrabalhadores < 2) {
+            throw new IllegalArgumentException("A quantidade de workers deve ser pelo menos 2 para atender clientes simultaneamente.");
+        }
+    }
+
     public static ServerConfig fromArgs(String[] argumentos) {
         if (argumentos == null) {
             throw new IllegalArgumentException("Os argumentos não podem ser nulos.");
@@ -38,9 +44,6 @@ public record ServerConfig(int porta, Path raiz, int tempoLimiteOciosoMs, int qu
                 }
                 case "--workers" -> {
                     quantidadeTrabalhadores = converterInteiro(valor, "--workers");
-                    if (quantidadeTrabalhadores <= 0) {
-                        throw new IllegalArgumentException("A quantidade de workers deve ser positiva.");
-                    }
                 }
                 default -> throw new IllegalArgumentException("Opção desconhecida: " + opcao);
             }
