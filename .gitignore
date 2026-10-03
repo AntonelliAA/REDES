@@ -36,3 +36,12 @@ Desktop.ini
 *.tmp
 temp/
 tmp/
+
+# Prints originais do relatório (com IP visível)
+relatorio/figuras-originais/
+
+# Auxiliares do LaTeX
+relatorio/*.aux
+relatorio/*.out
+relatorio/*.fls
+relatorio/*.fdb_latexmk

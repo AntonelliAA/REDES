@@ -1,50 +1,43 @@
-# Registro de medições reais
+# Registro das medições
 
-**Pendente:** preencher durante os testes entre máquinas distintas. Valores esperados e estimativas teóricas não são resultados medidos.
+Testes de 3 de outubro de 2026. Servidor em um MacBook (macOS), porta 8080, raiz `./www`. Cliente principal em Windows, com `curl.exe`. As capturas foram feitas no servidor e contêm só os pacotes de `tcp.port == 8080`.
 
-## Ambiente e RTT
+## RTT
 
-- Data e horário: [preencher]
-- Servidor: sistema operacional [preencher], IP [preencher], porta [preencher]
-- Cliente C1/C2: sistema operacional [preencher], IP [preencher]
-- Segundo cliente para concorrência: sistema operacional [preencher], IP [preencher]
-- Recurso solicitado e tamanho em bytes: [preencher]
-- Comando de ping: [preencher]
-- Saída completa do ping ou arquivo com a saída: [preencher]
-- RTT mínimo / **médio** / máximo: [preencher] ms
+`ping -c 10` entre as duas máquinas, sem perda: mínimo 2,756 ms, **médio 3,918 ms**, máximo 7,730 ms, desvio padrão 1,907 ms.
 
 ## C1 e C2
 
-| Métrica extraída da captura | C1 | C2 | Economia (%) |
+Dez GETs sequenciais de `/index.html` (2294 bytes). Bytes = soma de `frame.len` nos dois sentidos. Tempo = do primeiro SYN ao último ACK do encerramento.
+
+| Métrica | C1 (`c1.pcapng`) | C2 (`c2.pcapng`) | Economia |
 | :--- | :---: | :---: | :---: |
-| Handshakes completos | [medir; esperado 10] | [medir; esperado 1] | [calcular] |
-| Total de pacotes, ambas as direções | [medir] | [medir] | [calcular] |
-| Total de bytes, ambas as direções | [medir] | [medir] | [calcular] |
-| Tempo do primeiro ao último pacote (ms) | [medir] | [medir] | [calcular] |
+| Handshakes completos | 10 | 1 | — |
+| Total de pacotes | 120 | 67 | 44,2 % |
+| Total de bytes | 32 630 | 29 070 | 10,9 % |
+| Tempo total (ms) | 105,6 | 64,5 | 39,0 % |
 
-- Arquivos: `c1.pcapng` e `c2.pcapng` [confirmar que foram salvos]
-- Filtro e critério de contagem de bytes: [preencher]
-- Quadros inicial/final e respectivos horários, em cada cenário: [preencher]
-- Economia: `100 × (C1 − C2) / C1`.
+Sem retransmissões e sem RST nas duas capturas.
 
-## Overhead medido em C1
+## Overhead de conexão em C1
 
-| Etapa | Números dos quadros de controle | Pacotes | Bytes |
+Cada uma das dez conexões tem 12 pacotes e 3263 bytes.
+
+| Etapa | Por conexão | Pacotes (total) | Bytes (total) |
 | :--- | :--- | :---: | :---: |
-| Abertura das conexões | [preencher] | [medir] | [medir] |
-| Encerramento das conexões | [preencher] | [medir] | [medir] |
-| Total | — | [somar] | [somar] |
+| Abertura (SYN, SYN/ACK, ACK) | 3 pacotes, 192 bytes | 30 | 1920 |
+| Encerramento (FIN, ACK, FIN, ACK) | 4 pacotes, 228 bytes | 40 | 2280 |
+| Total | 7 pacotes, 420 bytes | 70 | 4200 |
 
-Inclua ACKs exclusivos de abertura/encerramento; explique pacotes que também transportem dados e não os conte duas vezes. Descreva retransmissões, caso existam.
+O ACK do cliente no encerramento confirma também os últimos dados; foi contado como encerramento.
 
-- Estimativa do custo dos handshakes adicionais: `9 × RTT médio` = [calcular] ms.
-- Diferença observada: `tempo_C1 − tempo_C2` = [calcular] ms.
-- Diferença observada em RTTs: `(tempo_C1 − tempo_C2) / RTT médio` = [calcular].
-- Explicação de diferenças entre modelo e medição: [preencher].
+## Tempo e RTT
 
-## Outras evidências obrigatórias
+- Diferença medida: `tempo_C1 − tempo_C2` = 41,2 ms (10,5 RTTs do ping).
+- Previsão com o RTT do ping: 9 × 3,918 = 35,3 ms.
+- RTT médio dos dez handshakes de C1 (SYN/ACK até o ACK): 4,484 ms. Previsão: 9 × 4,484 = 40,4 ms.
 
-- Respostas dos comandos de conformidade e três travessias: [anexar saída real].
-- Transação GET de outra máquina: arquivo [preencher], quadros de abertura/requisição/resposta/encerramento [preencher].
-- Concorrência: captura ou log [preencher], dois IPs [preencher], intervalos sobrepostos e respostas [preencher].
-- Interoperabilidade no navegador: máquinas/grupos [preencher], HTML/CSS/imagem carregados [verificar].
+## Outras evidências
+
+- Transação GET completa: quadros 1 a 11 e 13 de `c1.pcapng` (handshake 1 a 3, requisição e resposta 4 a 8, encerramento 9 a 13).
+- Concorrência: `concorrencia.pcapng`. O cliente A mantém uma requisição parcial de 0,4 s a 10,4 s; o cliente B, de outro IP, é atendido por inteiro em 4,92 s a 4,98 s. Os dois recebem 200.
