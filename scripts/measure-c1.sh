@@ -19,6 +19,8 @@ resultados=$(curl --disable --http1.1 --noproxy '*' --globoff \
     --silent --show-error --fail --fail-early \
     --connect-timeout 5 --max-time 30 --header 'Connection: close' \
     --write-out '%{http_code} %{num_connects}\n' "${args[@]}")
+# curl no Windows pode terminar cada linha com CRLF.
+resultados=${resultados//$'\r'/}
 
 requisicoes=0
 while read -r status conexoes; do
