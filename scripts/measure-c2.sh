@@ -14,12 +14,10 @@ for ((i = 1; i <= 10; i++)); do
 done
 
 echo "C2: 10 requisições sequenciais na mesma conexão para $url"
-# A mesma instância do curl reutiliza a conexão entre as URLs.
 resultados=$(curl --disable --http1.1 --noproxy '*' --globoff \
     --silent --show-error --fail --fail-early \
     --connect-timeout 5 --max-time 30 \
     --write-out '%{http_code} %{num_connects}\n' "${args[@]}")
-# curl no Windows pode terminar cada linha com CRLF.
 resultados=${resultados//$'\r'/}
 
 requisicoes=0

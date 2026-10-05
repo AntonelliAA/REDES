@@ -24,7 +24,6 @@ public final class StaticFileServiceTest {
 
         StaticFileService servico = new StaticFileService(pastaRaiz);
 
-        // 1. Arquivos válidos e tipos MIME
         RespostaArquivo r1 = obter(servico, "/index.html");
         TestSupport.checar(r1.status() == 200, "GET /index.html deve retornar 200");
         TestSupport.checar("text/html; charset=utf-8".equals(r1.tipoConteudo()), "MIME deve ser text/html");
@@ -56,18 +55,15 @@ public final class StaticFileServiceTest {
                     "MIME obrigatório para ." + tipo[0]);
         }
 
-        // 2. Resolução de diretório para index.html e query strings
         RespostaArquivo rRaiz = obter(servico, "/");
         TestSupport.checar(rRaiz.status() == 200, "GET / deve servir index.html");
 
         RespostaArquivo rQuery = obter(servico, "/index.html?parametro=123&outro=abc");
         TestSupport.checar(rQuery.status() == 200, "Query string deve ser ignorada na resolução de arquivo");
 
-        // 3. Arquivo inexistente
         RespostaArquivo rNaoExiste = obter(servico, "/inexistente.html");
         TestSupport.checar(rNaoExiste.status() == 404, "Arquivo inexistente deve retornar 404");
 
-        // 4. Tentativas de Directory Traversal (devem retornar 403)
         RespostaArquivo rTrav1 = obter(servico, "/../../outside.txt");
         TestSupport.checar(rTrav1.status() == 403, "Travessia /../../outside.txt deve retornar 403");
 
@@ -77,7 +73,6 @@ public final class StaticFileServiceTest {
         RespostaArquivo rTrav3 = obter(servico, "/safe/%2e%2e/%2e%2e/outside.txt");
         TestSupport.checar(rTrav3.status() == 403, "Travessia a partir de subpasta deve retornar 403");
 
-        // 5. Requisições malformadas (devem retornar 400)
         RespostaArquivo rHexInvalido = obter(servico, "/arquivo%ZZ.txt");
         TestSupport.checar(rHexInvalido.status() == 400, "%ZZ deve retornar 400");
 
@@ -93,7 +88,6 @@ public final class StaticFileServiceTest {
         Files.writeString(pastaRaiz.resolve("a+b.txt"), "mais");
         TestSupport.checar(obter(servico, "/a+b.txt").status() == 200, "Sinal + no caminho não representa espaço");
 
-        // Links simbólicos precisam ser verificados também ao escolher o index.html.
         testarLinksSimbolicos(servico, pastaRaiz, arquivoExterno);
 
         System.out.println("StaticFileServiceTest: OK");

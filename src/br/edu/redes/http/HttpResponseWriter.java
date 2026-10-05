@@ -38,41 +38,31 @@ public class HttpResponseWriter {
         StringBuilder cabecalhos = new StringBuilder();
         String razao = HttpResponse.obterRazaoStatus(resposta.status());
 
-        // 1. Linha de status
         cabecalhos.append("HTTP/1.1 ").append(resposta.status()).append(" ").append(razao).append("\r\n");
 
-        // 2. Data no formato IMF-fixdate GMT conforme RFC 9110
         String dataFormatada = FORMATADOR_DATA.format(relogio.instant());
         cabecalhos.append("Date: ").append(dataFormatada).append("\r\n");
 
-        // 3. Identificador Server
         cabecalhos.append("Server: ").append(nomeServidor).append("\r\n");
 
-        // 4. O tamanho é long: HEAD e arquivos grandes não dependem de um byte[].
         cabecalhos.append("Content-Length: ").append(resposta.tamanhoConteudo()).append("\r\n");
 
-        // 5. Content-Type se presente
         if (resposta.tipoConteudo() != null && !resposta.tipoConteudo().isBlank()) {
             cabecalhos.append("Content-Type: ").append(resposta.tipoConteudo()).append("\r\n");
         }
 
-        // 6. Cabeçalhos adicionais (ex: Allow)
         for (Map.Entry<String, String> entrada : resposta.cabecalhosExtras().entrySet()) {
             cabecalhos.append(entrada.getKey()).append(": ").append(entrada.getValue()).append("\r\n");
         }
 
-        // 7. Connection: close se a conexão for encerrar
         if (resposta.fecharConexao()) {
             cabecalhos.append("Connection: close\r\n");
         }
 
-        // 8. Linha em branco que finaliza a seção de cabeçalhos
         cabecalhos.append("\r\n");
 
-        // Escrever cabeçalhos em ISO-8859-1
         saida.write(cabecalhos.toString().getBytes(StandardCharsets.ISO_8859_1));
 
-        // Escrever corpo da mensagem se não for requisição HEAD
         if (!apenasCabecalhos) {
             if (resposta.arquivo() != null) {
                 ByteBuffer bloco = ByteBuffer.allocate(16 * 1024);
@@ -82,7 +72,6 @@ public class HttpResponseWriter {
                     bloco.limit((int) Math.min(bloco.capacity(), restante));
                     int lidos = resposta.arquivo().read(bloco);
                     if (lidos < 0) {
-                        // Não reutilizar a conexão se o arquivo encolheu durante o envio.
                         throw new EOFException("Arquivo terminou antes do Content-Length anunciado.");
                     }
                     saida.write(bloco.array(), 0, lidos);

@@ -43,7 +43,6 @@ public class HttpConnectionHandler implements Runnable {
                 }
 
                 if (requisicao == null) {
-                    // Encerramento limpo pelo cliente (EOF)
                     break;
                 }
 
@@ -57,8 +56,6 @@ public class HttpConnectionHandler implements Runnable {
                     }
                 }
 
-                // Este servidor só serve arquivos e não processa corpos de requisição.
-                // Fecha para não interpretar esses bytes como a próxima requisição.
                 String tamanhoCorpo = requisicao.obterCabecalho("content-length");
                 if (requisicao.obterCabecalho("transfer-encoding") != null
                         || (tamanhoCorpo != null && Long.parseLong(tamanhoCorpo) > 0)) {
@@ -84,9 +81,7 @@ public class HttpConnectionHandler implements Runnable {
                 }
             }
         } catch (SocketTimeoutException e) {
-            // Timeout ocioso configurado expirado: fechar conexão silenciosamente
         } catch (IOException e) {
-            // Falha de I/O ou conexão resetada pelo cliente
         } finally {
             try {
                 socket.close();

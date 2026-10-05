@@ -19,7 +19,6 @@ public final class HttpResponseWriterTest {
         Clock relogioFixo = Clock.fixed(Instant.parse("2026-09-21T12:00:00Z"), ZoneOffset.UTC);
         HttpResponseWriter escritor = new HttpResponseWriter("Grupo-Redes", relogioFixo);
 
-        // 1. Teste de resposta GET 200 OK
         byte[] corpoHtml = "<h1>Sucesso</h1>".getBytes(StandardCharsets.UTF_8);
         HttpResponse respGet = new HttpResponse(200, "text/html; charset=utf-8", corpoHtml, false, Map.of());
 
@@ -35,7 +34,6 @@ public final class HttpResponseWriterTest {
         TestSupport.checar(!textoGet.contains("Connection: close"), "Sem Connection: close quando persistente");
         TestSupport.checar(textoGet.endsWith("<h1>Sucesso</h1>"), "Corpo presente no final de GET");
 
-        // 2. Teste de resposta HEAD 200 OK
         ByteArrayOutputStream baosHead = new ByteArrayOutputStream();
         escritor.escrever(baosHead, respGet, true);
         String textoHead = baosHead.toString(StandardCharsets.ISO_8859_1);
@@ -43,7 +41,6 @@ public final class HttpResponseWriterTest {
         TestSupport.checar(textoHead.endsWith("\r\n\r\n"), "HEAD termina exatamente com \\r\\n\\r\\n sem corpo");
         TestSupport.checar(textoHead.contains("Content-Length: " + corpoHtml.length + "\r\n"), "HEAD mantém Content-Length do corpo");
 
-        // 3. Teste de erro 405 Method Not Allowed com Allow: GET, HEAD e Connection: close
         HttpResponse resp405 = HttpResponse.erro(405, true, Map.of("Allow", "GET, HEAD"));
         ByteArrayOutputStream baos405 = new ByteArrayOutputStream();
         escritor.escrever(baos405, resp405, false);
@@ -59,7 +56,6 @@ public final class HttpResponseWriterTest {
     }
 
     private static void testarArquivoEmBlocos(HttpResponseWriter escritor) throws Exception {
-        // Pequeno arquivo binário que exige mais de um bloco de envio.
         byte[] conteudo = new byte[40_000];
         for (int i = 0; i < conteudo.length; i++) {
             conteudo[i] = (byte) (i % 251);

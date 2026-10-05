@@ -47,42 +47,32 @@ public final class ServerIntegrationTest {
         acceptThread.start();
 
         try {
-            // 1. GET 200 OK
             testarGet200(porta);
 
-            // 2. HEAD de sucesso e de erro, sem corpo antes da próxima resposta
             testarHead200(porta);
             testarHead404(porta);
             testarHeadMalformado(porta);
             testarNovosCasosDeParser(porta);
 
-            // 3. POST 405 Method Not Allowed
             testarMetodoNaoPermitido405(porta);
 
-            // 4. Request line inválida 400
             testarRequisicaoInvalida400(porta);
 
-            // 5. Arquivo inexistente 404
             testarArquivoNaoEncontrado404(porta);
 
-            // 6. Travessia de diretório 403
             testarTravessiaDiretorio403(porta);
 
-            // 7. Dez requisições sequenciais no mesmo socket
             testarConexaoPersistente(porta);
             testarContentLengthZeroPersistente(porta);
 
-            // 8. Pipelining seguro (2 requisições enviadas juntas)
             testarPipelining(porta);
 
-            // 9. Encerramento com Connection: close
             testarConnectionClose(porta);
             testarTimeoutOcioso(porta);
             testarCorpoNaoViraRequisicao(porta, "POST", 405, "Content-Length");
             testarCorpoNaoViraRequisicao(porta, "GET", 200, "Content-Length");
             testarCorpoNaoViraRequisicao(porta, "POST", 405, "Transfer-Encoding");
 
-            // 10. Concorrência não bloqueante (cliente lento não bloqueia cliente rápido)
             testarConcorrenciaNaoBloqueante(porta);
 
             System.out.println("ServerIntegrationTest: OK");
@@ -303,7 +293,6 @@ public final class ServerIntegrationTest {
         CountDownLatch clienteRapidoConcluiu = new CountDownLatch(1);
         CountDownLatch clienteLentoConcluiu = new CountDownLatch(1);
 
-        // Cliente A (lento): conecta e envia apenas uma parte dos cabeçalhos
         Thread clienteLento = new Thread(() -> {
             try (Socket socketLento = conectar(porta)) {
                 OutputStream out = socketLento.getOutputStream();
@@ -311,7 +300,6 @@ public final class ServerIntegrationTest {
                 out.flush();
                 conexaoIniciada.countDown();
 
-                // Aguarda o cliente B terminar com sucesso
                 TestSupport.checar(clienteRapidoConcluiu.await(2, TimeUnit.SECONDS), "Cliente rápido deve concluir primeiro");
                 enviarRequisicao(socketLento, "host\r\nConnection: close\r\n\r\n");
                 TestSupport.checar(lerResposta(socketLento).status == 200, "Cliente lento também deve receber 200 ao completar a requisição");
@@ -323,7 +311,6 @@ public final class ServerIntegrationTest {
 
         TestSupport.checar(conexaoIniciada.await(1, TimeUnit.SECONDS), "Cliente lento deve conectar antes do rápido");
 
-        // Cliente B (rápido): conecta enquanto o cliente A está pendente e deve responder imediatamente
         long inicio = System.currentTimeMillis();
         try (Socket socketRapido = conectar(porta)) {
             enviarRequisicao(socketRapido, "GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n");

@@ -39,7 +39,6 @@ public class StaticFileService {
             return FileResult.erro(400);
         }
 
-        // Remove a query string (?...)
         String caminhoComBarra = alvoRequisicao;
         int indiceQuery = caminhoComBarra.indexOf('?');
         if (indiceQuery >= 0) {
@@ -50,7 +49,6 @@ public class StaticFileService {
             return FileResult.erro(400);
         }
 
-        // Decodificação segura de percent-encoding
         String caminhoDecodificado;
         try {
             caminhoDecodificado = decodificarPercentEncoding(caminhoComBarra);
@@ -58,7 +56,6 @@ public class StaticFileService {
             return FileResult.erro(400);
         }
 
-        // Remove barras iniciais redundantes
         while (caminhoDecodificado.startsWith("/")) {
             caminhoDecodificado = caminhoDecodificado.substring(1);
         }
@@ -70,12 +67,10 @@ public class StaticFileService {
             return FileResult.erro(400);
         }
 
-        // Verificação 1: o caminho normalizado está estritamente contido no diretório raiz?
         if (!candidato.startsWith(raiz)) {
             return FileResult.erro(403);
         }
 
-        // Verificação 2: resolução segura de links simbólicos (symlinks)
         Path candidatoReal;
         try {
             candidatoReal = candidato.toRealPath();
@@ -87,12 +82,11 @@ public class StaticFileService {
             return FileResult.erro(403);
         }
 
-        // Se for um diretório, tentar servir o index.html contido nele
         if (Files.isDirectory(candidatoReal)) {
             try {
                 candidatoReal = candidatoReal.resolve("index.html").toRealPath();
             } catch (IOException e) {
-                return FileResult.erro(404); // Nunca listar diretórios
+                return FileResult.erro(404);
             }
             if (!candidatoReal.startsWith(raiz)) {
                 return FileResult.erro(403);
@@ -104,8 +98,6 @@ public class StaticFileService {
         }
 
         try {
-            // Mantém o mesmo arquivo aberto até o fim da resposta e não segue
-            // um link introduzido no arquivo final entre a validação e a abertura.
             SeekableByteChannel canal = Files.newByteChannel(candidatoReal,
                     StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
             try {

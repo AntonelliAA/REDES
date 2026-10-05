@@ -13,7 +13,6 @@ import java.util.Set;
 
 public class HttpRequestReader {
     private static final String TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
-    // Apenas campos cuja gramática permite uma lista podem ser unidos por vírgula.
     private static final Set<String> CAMPOS_EM_LISTA = Set.of(
             "accept", "accept-charset", "accept-encoding", "accept-language", "cache-control",
             "connection", "content-encoding", "content-language", "expect", "forwarded",
@@ -59,12 +58,11 @@ public class HttpRequestReader {
                     }
 
                     byte[] bytesCabecalho = Arrays.copyOfRange(buffer, inicio, indiceFim);
-                    inicio = indiceFim + 4; // Pula os 4 bytes do \r\n\r\n
+                    inicio = indiceFim + 4;
 
                     return interpretarRequisicao(bytesCabecalho, linhaRequisicao);
                 }
 
-                // Os três primeiros bytes de CRLFCRLF podem chegar separados do último.
                 if ((fim - inicio) - 3 > maxBytesCabecalho) {
                     throw new BadRequestException("Cabeçalhos excederam o limite máximo permitido sem encontrar o terminador CRLF.");
                 }
@@ -74,7 +72,7 @@ public class HttpRequestReader {
                 int bytesLidos = entrada.read(buffer, fim, buffer.length - fim);
                 if (bytesLidos == -1) {
                     if (inicio == fim) {
-                        return null; // Encerramento limpo da conexão pelo cliente
+                        return null;
                     }
                     throw new BadRequestException("Conexão fechada prematuramente antes do término da requisição HTTP.");
                 }
@@ -82,8 +80,6 @@ public class HttpRequestReader {
                 fim += bytesLidos;
             }
         } catch (BadRequestException e) {
-            // Só uma linha completa e válida permite identificar HEAD; nunca examine
-            // bytes da próxima requisição para decidir se a resposta de erro tem corpo.
             boolean apenasCabecalhos = linhaRequisicao != null && "HEAD".equals(linhaRequisicao.metodo());
             throw new BadRequestException(e.getMessage(), e, apenasCabecalhos);
         }
@@ -206,7 +202,6 @@ public class HttpRequestReader {
         if (!cabecalhos.containsKey("host")) {
             throw new BadRequestException("Cabeçalho Host obrigatório em HTTP/1.1.");
         }
-        // Host vazio é permitido quando a URI de destino não define autoridade.
         if (!cabecalhos.get("host").isEmpty()) {
             validarAutoridade(cabecalhos.get("host"));
         }
@@ -246,8 +241,6 @@ public class HttpRequestReader {
             if (caminho == null || caminho.isEmpty()) {
                 caminho = "/";
             }
-            // Não normalize '..' nem decodifique percent-encoding: o serviço de
-            // arquivos deve verificar a travessia no caminho original da URI.
             return caminho + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
         } catch (URISyntaxException e) {
             throw new BadRequestException("URI absoluta inválida.", e);
@@ -256,7 +249,6 @@ public class HttpRequestReader {
 
     private void validarAutoridade(String autoridade) throws BadRequestException {
         try {
-            // URI valida nome/IP e porta localmente, sem consultar DNS.
             URI uri = new URI("http://" + autoridade).parseServerAuthority();
             if (uri.getHost() == null || uri.getRawUserInfo() != null
                     || !uri.getRawPath().isEmpty() || uri.getRawQuery() != null
@@ -269,7 +261,6 @@ public class HttpRequestReader {
     }
 
     private void validarCodificacao(String valor) throws BadRequestException {
-        // Este servidor aceita somente listas simples, sem parâmetros de codificação.
         String[] codificacoes = valor.split(",", -1);
         for (int i = 0; i < codificacoes.length; i++) {
             String codificacao = codificacoes[i].trim();

@@ -94,27 +94,22 @@ public final class HttpRequestReaderTest {
     }
 
     private static void testarErrosSintaxe() {
-        // Quatro campos na request line
         TestSupport.esperarExcecao(BadRequestException.class, () -> {
             new HttpRequestReader(new ByteArrayInputStream("GET / a HTTP/1.1\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1)), 1024).ler();
         });
 
-        // Dois campos na request line
         TestSupport.esperarExcecao(BadRequestException.class, () -> {
             new HttpRequestReader(new ByteArrayInputStream("GET /index.html\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1)), 1024).ler();
         });
 
-        // Versão errada
         TestSupport.esperarExcecao(BadRequestException.class, () -> {
             new HttpRequestReader(new ByteArrayInputStream("GET / HTTP/1.0\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1)), 1024).ler();
         });
 
-        // Header sem dois pontos
         TestSupport.esperarExcecao(BadRequestException.class, () -> {
             new HttpRequestReader(new ByteArrayInputStream("GET / HTTP/1.1\r\nHeaderSemSeparador\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1)), 1024).ler();
         });
 
-        // Header duplicado
         TestSupport.esperarExcecao(BadRequestException.class, () -> {
             new HttpRequestReader(new ByteArrayInputStream("GET / HTTP/1.1\r\nHost: a\r\nHost: b\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1)), 1024).ler();
         });
@@ -300,7 +295,6 @@ public final class HttpRequestReaderTest {
     }
 
     private static void testarLimiteTamanho() {
-        // Cabeçalho maior que o limite configurado (limite de 100 bytes)
         String textoLongo = "GET / HTTP/1.1\r\nX-Long: " + "a".repeat(200) + "\r\n\r\n";
         HttpRequestReader leitor = new HttpRequestReader(new ByteArrayInputStream(textoLongo.getBytes(StandardCharsets.ISO_8859_1)), 100);
         TestSupport.esperarExcecao(BadRequestException.class, leitor::ler);

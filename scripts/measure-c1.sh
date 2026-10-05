@@ -14,12 +14,10 @@ for ((i = 1; i <= 10; i++)); do
 done
 
 echo "C1: 10 requisições sequenciais com Connection: close para $url"
-# Um único processo, mas o servidor fecha a conexão após cada resposta.
 resultados=$(curl --disable --http1.1 --noproxy '*' --globoff \
     --silent --show-error --fail --fail-early \
     --connect-timeout 5 --max-time 30 --header 'Connection: close' \
     --write-out '%{http_code} %{num_connects}\n' "${args[@]}")
-# curl no Windows pode terminar cada linha com CRLF.
 resultados=${resultados//$'\r'/}
 
 requisicoes=0
