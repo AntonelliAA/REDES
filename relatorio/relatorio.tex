@@ -104,8 +104,9 @@ sem corpo \\
 400 & \cod{curl.exe -{}-http1.1 -i -{}-request-target '/ alvo-invalido'
 "\$BASE/"} & \cod{HTTP/1.1 400 Bad Request}, \cod{Content-Length: 17},
 \cod{Connection: close} \\
-403 & \cod{curl.exe -{}-http1.1 -{}-path-as-is "\$BASE/../../etc/passwd"} &
-corpo \cod{403 Forbidden} (ver Seção~\ref{sec:seguranca}) \\
+403 & \cod{curl.exe -{}-http1.1 -i -{}-path-as-is "\$BASE/../../etc/passwd"} &
+\cod{HTTP/1.1 403 Forbidden}, \cod{Content-Length: 15} (ver
+Seção~\ref{sec:seguranca}) \\
 404 & \cod{curl.exe -{}-http1.1 -i "\$BASE/aaa.html"} &
 \cod{HTTP/1.1 404 Not Found}, \cod{Content-Length: 15} \\
 405 & \cod{curl.exe -{}-http1.1 -i -X POST "\$BASE/index.html"} &
@@ -158,10 +159,10 @@ sair da raiz, a resposta é 403, exista o arquivo ou não. A opção
 \toprule
 \textbf{Tentativa} & \textbf{Caminho enviado} & \textbf{Resposta} \\
 \midrule
-\cod{../} literal & \cod{/../../etc/passwd} & \cod{403 Forbidden} \\
-\cod{../} literal & \cod{/../../outside.txt} & \cod{403 Forbidden} \\
-Percent-encoding & \cod{/\%2e\%2e/\%2e\%2e/outside.txt} & \cod{403 Forbidden} \\
-Prefixo válido + encoding & \cod{/safe/\%2e\%2e/\%2e\%2e/outside.txt} & \cod{403 Forbidden} \\
+\cod{../} literal & \cod{/../../etc/passwd} & \cod{HTTP/1.1 403 Forbidden} \\
+\cod{../} literal & \cod{/../../outside.txt} & \cod{HTTP/1.1 403 Forbidden} \\
+Percent-encoding & \cod{/\%2e\%2e/\%2e\%2e/outside.txt} & \cod{HTTP/1.1 403 Forbidden} \\
+Prefixo válido + encoding & \cod{/safe/\%2e\%2e/\%2e\%2e/outside.txt} & \cod{HTTP/1.1 403 Forbidden} \\
 \bottomrule
 \end{tabularx}
 \caption{Tentativas de travessia rejeitadas pelo servidor.}
@@ -171,9 +172,9 @@ Prefixo válido + encoding & \cod{/safe/\%2e\%2e/\%2e\%2e/outside.txt} & \cod{40
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{curl-403-travessia}
-\caption{As quatro tentativas, feitas a partir da máquina cliente. Os
-comandos foram executados sem \cod{-i}, por isso aparece só o corpo da
-resposta.}
+\caption{As quatro tentativas, feitas a partir da máquina cliente. Com
+\cod{-i}, o curl mostra a linha de status e os cabeçalhos: todas recebem
+\cod{HTTP/1.1 403 Forbidden}.}
 \label{fig:travessia}
 \end{figure}
 
@@ -183,14 +184,24 @@ A transação analisada é a primeira conexão da captura \cod{capturas/c1.pcapn
 feita no servidor com o filtro \cod{tcp.port == 8080}. O cliente Windows
 executou \cod{curl.exe -{}-http1.1 -H 'Connection: close' "\$BASE/index.html"};
 a Figura~\ref{fig:close} mostra a mesma requisição vista pelo terminal. A
-Tabela~\ref{tab:transacao} lista os quadros, com o tempo contado a partir do
-SYN.
+Figura~\ref{fig:wireshark} mostra a conexão no Wireshark, isolada com o filtro
+\cod{tcp.stream eq 0}, e a Tabela~\ref{tab:transacao} detalha cada quadro, com
+o tempo contado a partir do SYN.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{curl-get-connection-close}
 \caption{GET com \cod{Connection: close}, visto pelo cliente (início da saída).}
 \label{fig:close}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{wireshark-transacao}
+\caption{Primeira conexão de \cod{c1.pcapng} no Wireshark: handshake (1 a 3),
+\cod{GET} (4), confirmação e resposta \cod{200 OK} (5 a 8) e encerramento (9 a 13). As
+colunas de endereço IP foram borradas.}
+\label{fig:wireshark}
 \end{figure}
 
 \begin{table}[H]
