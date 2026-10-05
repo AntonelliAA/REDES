@@ -1,91 +1,115 @@
-# Servidor HTTP/1.1 sobre Sockets TCP em Java
+# Servidor HTTP/1.1 sobre Sockets TCP
 
-Servidor de arquivos estáticos construído com `ServerSocket` e `Socket`, sem biblioteca HTTP de servidor. Implementa os requisitos de GET, HEAD, concorrência, proteção do diretório raiz e conexões persistentes do [enunciado](Enunciado.md).
+Trabalho 1 de Laboratório de Redes de Computadores. É um servidor de arquivos estáticos escrito em Java, usando só `ServerSocket` e `Socket`. Toda a leitura das requisições e a montagem das respostas HTTP foram feitas por nós, sem biblioteca HTTP.
 
-## Compilação e execução
+O servidor responde a `GET` e `HEAD`, devolve `200`, `400`, `403`, `404` e `405`, bloqueia acesso fora do diretório raiz, atende várias conexões ao mesmo tempo e mantém a conexão aberta entre requisições (HTTP/1.1 persistente), com timeout de ociosidade.
 
-Requer JDK 17 ou superior. Os scripts usam Bash; os testes em rede também usam `curl` e Wireshark. A compilação utiliza `--release 17`, mesmo quando executada com um JDK mais recente.
+## O que tem aqui
 
-Execute os comandos na raiz do projeto:
+| Pasta | Conteúdo |
+| :--- | :--- |
+| `src/` | Código do servidor |
+| `test/` | Testes automatizados (Java puro, sem bibliotecas) |
+| `scripts/` | Scripts para compilar, testar, executar e medir C1/C2 |
+| `www/` | Página usada no teste de interoperabilidade (HTML + CSS + imagem) |
+| `capturas/` | Capturas do Wireshark: `c1.pcapng`, `c2.pcapng` e `concorrencia.pcapng` |
+| `relatorio/` | Relatório em PDF (e o fonte LaTeX) |
+
+## Como executar
+
+Precisa do **JDK 17 ou mais novo**. Não há outras dependências.
+
+**1. Abra um terminal na pasta do projeto.**
+
+**2. Compile e suba o servidor:**
 
 ```bash
-bash scripts/compile.sh
-bash scripts/test.sh
 bash scripts/run.sh --port 8080 --root ./www
 ```
 
-A compilação gera `out/main` e `out/test`. Os scripts de teste e execução também compilam o projeto. O servidor escuta em `0.0.0.0` e deve ser acessado pelo IP da máquina na rede.
+O script compila tudo em `out/` e inicia o servidor. Ele deve mostrar:
 
-| Argumento | Obrigatório | Padrão | Descrição |
-| :--- | :---: | :--- | :--- |
-| `--port <porta>` | Sim | — | Porta entre 1025 e 65535. |
-| `--root <diretório>` | Sim | — | Diretório existente que contém os arquivos servidos. |
-| `--idle-timeout <ms>` | Não | `5000` | Tempo máximo aguardando dados em uma leitura do socket, em milissegundos. |
-| `--workers <quantidade>` | Não | `max(4, CPUs)` | Quantidade de threads de atendimento, no mínimo 2. |
+```text
+Servidor HTTP/1.1 escutando em 0.0.0.0:8080
+```
 
-Exemplo:
+**3. Descubra o IP da máquina** (`ipconfig` no Windows, `ipconfig getifaddr en0` no macOS, `ip addr` no Linux).
+
+**4. Em outra máquina da rede, abra no navegador** `http://<IP_DO_SERVIDOR>:8080/`. A página deve carregar com o estilo e a imagem.
+
+Para parar o servidor, use `Ctrl+C`.
+
+### Sem Bash (Windows, PowerShell ou CMD)
+
+```bat
+javac --release 17 -encoding UTF-8 -d out\main src\br\edu\redes\http\*.java
+java -cp out\main br.edu.redes.http.ServerMain --port 8080 --root .\www
+```
+
+### Rodar os testes
 
 ```bash
-bash scripts/run.sh --port 8080 --root ./www --idle-timeout 5000 --workers 8
+bash scripts/test.sh
+```
+
+Cada classe de teste imprime `OK` quando passa.
+
+## Argumentos
+
+| Argumento | Obrigatório | Padrão | Para que serve |
+| :--- | :---: | :---: | :--- |
+| `--port <número>` | Sim | — | Porta do servidor, de 1025 a 65535 |
+| `--root <pasta>` | Sim | — | Pasta com os arquivos que serão servidos |
+| `--idle-timeout <ms>` | Não | `5000` | Tempo em milissegundos que uma conexão pode ficar parada antes de ser fechada |
+| `--workers <número>` | Não | maior entre 4 e o nº de CPUs | Quantas conexões são atendidas ao mesmo tempo (mínimo 2) |
+
+Exemplo com todos os argumentos:
+
+```bash
+bash scripts/run.sh --port 8080 --root ./www --idle-timeout 5000 --workers 32
 ```
 
 ## Arquitetura
 
-- `ServerMain` aceita conexões e as entrega a um pool fixo de threads. Cada conexão ocupa uma thread enquanto é atendida; as demais aguardam na fila do executor.
-- `HttpRequestReader` acumula bytes até `\r\n\r\n` e preserva o excedente para a próxima requisição. Valida Host e enquadramento do corpo, aceita cabeçalhos de lista repetidos e extrai o caminho de alvos HTTP absolutos sem remover tentativas de travessia.
-- `StaticFileService` decodifica e normaliza o caminho, verifica se o caminho real está dentro da raiz e abre o arquivo. O canal permanece aberto até a resposta terminar.
-- `HttpResponseWriter` escreve status, `Date` em GMT, `Server`, tipo e tamanho do conteúdo. GET transmite blocos de até 16 KiB; HEAD envia os cabeçalhos sem ler o corpo, inclusive nas respostas 400 quando a linha HEAD foi reconhecida. Se um arquivo encolher durante o envio, a conexão fecha; se crescer, são enviados apenas os bytes anunciados.
-- `HttpConnectionHandler` mantém a conexão por padrão e a encerra quando solicitado com `Connection: close`, por timeout ou quando necessário para rejeitar uma requisição inválida.
+O caminho de uma requisição passa por cinco classes, nesta ordem:
 
-O servidor não processa corpos de requisição. Se houver `Content-Length` positivo ou `Transfer-Encoding` aceito, responde com `Connection: close` para não interpretar o corpo como outra requisição. O parser aceita `Transfer-Encoding` como uma lista de nomes sem parâmetros, com `chunked` na última posição. `Content-Length: 0` permite persistência; métodos não suportados recebem 405. Enquadramento inválido, como `Transfer-Encoding: gzip` sem `chunked` final, recebe 400 e fechamento.
+```text
+cliente ──TCP──> ServerMain ──> HttpConnectionHandler (uma thread do pool)
+                                   │
+                                   ├─> HttpRequestReader   lê e interpreta a requisição
+                                   ├─> StaticFileService   encontra o arquivo com segurança
+                                   └─> HttpResponseWriter  envia a resposta
+                                   │
+                                   └─ repete na mesma conexão até close, timeout ou o cliente sair
+```
 
-O timeout se aplica à leitura, não à escrita: um cliente que pare de receber dados pode manter uma thread ocupada. A fila do executor não tem limite configurado.
+- **`ServerMain`** abre o socket em `0.0.0.0` (todas as interfaces, para aceitar outras máquinas), espera conexões com `accept()` e entrega cada uma a um pool de threads.
+- **`HttpConnectionHandler`** cuida de uma conexão inteira. Atende uma requisição atrás da outra e só fecha quando o cliente pede `Connection: close`, quando passa o timeout sem dados ou quando a requisição é inválida.
+- **`HttpRequestReader`** junta os bytes que chegam do socket até encontrar a linha em branco (`\r\n\r\n`) que termina os cabeçalhos. Como o TCP é um fluxo contínuo, uma leitura pode trazer meia requisição ou o começo da próxima. O que sobra fica guardado para a requisição seguinte. Requisição malformada gera `400`.
+- **`StaticFileService`** decodifica o percent-encoding do caminho (`%20`, `%2e`…), resolve os `..` e confere se o resultado continua dentro da pasta raiz. Se não continuar, responde `403`. Também define o `Content-Type` pela extensão do arquivo.
+- **`HttpResponseWriter`** escreve a linha de status e os cabeçalhos `Date` (GMT), `Server`, `Content-Length` e `Content-Type`. No `GET` envia o arquivo em blocos de 16 KiB; no `HEAD` envia os mesmos cabeçalhos, sem o corpo.
+- **`ServerConfig`** lê os argumentos da linha de comando. **`HttpRequest`**, **`HttpResponse`**, **`FileResult`** e **`BadRequestException`** só carregam dados entre as classes acima.
 
-O diretório raiz deve ser confiável: a validação bloqueia travessias e links externos estáticos, mas não garante proteção contra modificações locais concorrentes da árvore.
+### Por que um pool de threads
 
-## Verificação dos métodos e códigos de status
+Cada conexão é atendida por uma thread própria, tirada de um pool de tamanho fixo. O código de cada conexão fica simples: lê, processa, responde e repete. Uma conexão lenta prende só a sua thread, e as outras continuam sendo atendidas. O pool também impede que uma rajada de conexões crie threads sem limite: as que chegam com todas as threads ocupadas esperam na fila.
 
-Na máquina cliente, substitua o IP abaixo pelo IP real do servidor. Os comandos não constituem evidências até que suas respostas sejam registradas.
+Limitações que conhecemos: o timeout vale só para leitura, e a fila do pool não tem tamanho máximo.
+
+## Testando com curl
+
+Troque o IP pelo do servidor. A opção `--path-as-is` impede o curl de remover os `../` antes de enviar.
 
 ```bash
 BASE='http://192.168.1.100:8080'
 
-# 200: GET e HEAD; Content-Length deve corresponder ao tamanho do arquivo.
-curl --http1.1 -i "$BASE/index.html"
-curl --http1.1 -I "$BASE/index.html"
-
-# 400: o espaço inserido no alvo torna a linha de requisição inválida.
-curl --http1.1 -i --request-target '/ alvo-invalido' "$BASE/"
-
-# 403: três travessias distintas, incluindo percent-encoding.
-# --path-as-is impede o curl de remover ../ antes de enviar o caminho.
-curl --http1.1 --path-as-is -i "$BASE/../../etc/passwd"
-curl --http1.1 --path-as-is -i "$BASE/%2e%2e/%2e%2e/outside.txt"
-curl --http1.1 --path-as-is -i "$BASE/safe/%2e%2e/%2e%2e/outside.txt"
-
-# 404: arquivo inexistente.
-curl --http1.1 -i "$BASE/arquivo-inexistente.html"
-
-# 405: método não suportado; conferir Allow: GET, HEAD.
-curl --http1.1 -i -X POST "$BASE/index.html"
-
-# Conferir Connection: close na resposta e o encerramento na captura.
-curl --http1.1 -i -H 'Connection: close' "$BASE/index.html"
+curl -i "$BASE/index.html"                                  # 200
+curl -I "$BASE/index.html"                                  # 200, só cabeçalhos (HEAD)
+curl -i --request-target '/ invalido' "$BASE/"              # 400
+curl -i --path-as-is "$BASE/../../etc/passwd"               # 403
+curl -i --path-as-is "$BASE/%2e%2e/%2e%2e/etc/passwd"       # 403
+curl -i "$BASE/nao-existe.html"                             # 404
+curl -i -X POST "$BASE/index.html"                          # 405, com Allow: GET, HEAD
 ```
 
-## Testes na rede e entrega
-
-Antes de medir, identifique os IPs (`ipconfig`, `ip addr` ou `ifconfig`), confirme o alcance com `ping` e teste a captura na interface Wi-Fi/Ethernet. As medições exigidas devem ocorrer **entre máquinas distintas**. A suíte local valida o código, mas não substitui esses testes.
-
-Abra `http://<IP_DO_SERVIDOR>:8080/` no navegador de outra máquina e confira o carregamento do HTML, de `style.css` e de `pixel.png`. O navegador pode usar mais de uma conexão para esses recursos. Faça também o teste de duas máquinas clientes atendidas ao mesmo tempo.
-
-No Wireshark, use `tcp port 8080` como **filtro de captura** ou `tcp.port == 8080` como **filtro de exibição**. Siga [capturas/README.md](capturas/README.md) para executar:
-
-```bash
-bash scripts/measure-c1.sh "http://<IP_DO_SERVIDOR>:8080/index.html"
-bash scripts/measure-c2.sh "http://<IP_DO_SERVIDOR>:8080/index.html"
-```
-
-Os scripts realizam 10 GETs sequenciais, exigem respostas 200 e conferem as conexões abertas pelo curl: 10 em C1 e 1 em C2. Não dependem de Python. Pacotes, bytes, handshakes completos e tempo total devem ser extraídos das capturas.
-
-Preencha [capturas/medicoes.md](capturas/medicoes.md) com os valores reais e finalize [relatorio/roteiro.md](relatorio/roteiro.md). O roteiro ainda precisa das evidências de rede e deve ser exportado para **um único PDF**. Inclua no `.zip` ou `.tar` os fontes, README, scripts, `www/`, capturas `.pcapng` e o relatório em PDF; exclua `out/`, `.git/`, temporários e binários de compilação.
+As medições C1 (uma conexão por requisição) e C2 (conexão persistente) foram feitas com `scripts/measure-c1.sh` e `scripts/measure-c2.sh`, que recebem a URL do servidor. Os resultados e a análise estão no relatório.
